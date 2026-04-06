@@ -76,78 +76,88 @@ This encoding is used for playback position, edit cursor, and sequence length pr
 
 These patches are written for the Workshop System's analogue section. The Computer's outputs connect to the SineSquare oscillators, Slopes, Ring Mod, Humpback filters, and Mix.
 
-A quick reminder of what's available: two SineSquare VCOs (each with a pitch/FM input, sine output, and square output), two Slopes (signal input, CV input for rate modulation, and output; 3-position switch for Loop/off/Blip), a Ring Mod (audio input, modulation input, output — works as a VCA when one input receives an envelope), two Humpback filters (audio in, FM in, CV in for cutoff modulation, Res knob, LP out, BP/HP out), and the Mix (four channel inputs with pan on 1–2, L/R outputs, headphone out).
+A quick reminder of what's available: two SineSquare VCOs (each with a **pitch input** for V/oct tracking and a separate **FM input** with attenuverter for modulation, plus sine and square outputs), two Slopes (signal input, CV input for rate modulation, output; Loop/off/Blip switch), a Ring Mod (audio input, modulation input, output — works as a VCA when one input receives a unipolar envelope), two Humpback filters (audio in, FM in, CV in for cutoff, Res knob, LP out, BP/HP out — the FM input can also serve as an amplitude control when fed an envelope), and the Mix (four channel inputs with pan on 1–2, L/R outputs, headphone out).
 
 ### 1. Classic DFAM Percussion Voice
 
-The essential drum patch: a pitched oscillator shaped by an envelope, with per-step velocity controlling the decay time — just like the real DFAM.
+The essential drum patch: a pitched oscillator shaped by an envelope, with per-step velocity controlling the decay time — just like the real DFAM. Uses the Slope envelope into the VCO's FM input for pitch sweep on the attack, giving each hit a "zap" character.
 
 ```
-CV Out 1          --> SineSquare 1 pitch input
+CV Out 1          --> SineSquare 1 pitch input (sequence pitch)
 CV Out 2          --> Slope 1 CV input (velocity controls decay time)
 Pulse Out 1       --> Slope 1 signal input (step trigger)
-SineSquare 1 sine --> Ring Mod audio input
-Slope 1 output    --> Ring Mod modulation input (acts as VCA)
-Ring Mod output   --> Mix channel 1
+Slope 1 output    --> SineSquare 1 FM input (pitch sweep on attack)
+SineSquare 1 sine --> Humpback 1 audio input
+Slope 1 output    --> Humpback 1 FM input (envelope opens filter as VCA)
+Humpback 1 LP out --> Mix channel 1
 Audio Out 1       --> Mix channel 2 (noise layer)
 ```
 
-Set the SineSquare 1 FM attenuverter knob to around 2 o'clock for 1V/oct tracking. The Slope fires on each step trigger and its envelope output controls the Ring Mod as a VCA. The velocity CV modulates the Slope's rate via its CV input — high-velocity steps get a longer decay (accented hits), low-velocity steps get a shorter, tighter sound. Mix in the white noise on a second channel for snare-like transients, or turn it down for pure pitched drums.
+The sequencer pitch goes to the VCO's dedicated pitch input for tracking. The Slope envelope serves double duty: it sweeps the VCO pitch via the FM input (set the FM attenuverter low for subtle pitch zaps, higher for laser sounds) and opens the Humpback filter as a VCA via the filter's FM input. The velocity CV modulates the Slope's rate — high-velocity steps decay longer (accented), low-velocity steps stay tight. Mix in the white noise for snare-like transients or turn it down for pure pitched drums.
 
 Switch to edit mode (MIDDLE) to program pitches per step with X and velocities with Y. Reset the Computer for a fresh random pattern.
 
-### 2. Dual-VCO Sequence Through Filter
+### 2. Dual-VCO Sequence with Cross-Modulation
 
-Both pitch outputs drive the two SineSquare oscillators with an interval between them. Velocity modulates the filter cutoff for per-step timbral variation.
+Both pitch outputs drive the two SineSquare VCOs at an interval set by Y knob. The VCOs cross-modulate each other via their FM inputs for richer timbres, and velocity sweeps the filter cutoff per step.
 
 ```
 CV Out 1          --> SineSquare 1 pitch input
 Audio Out 2       --> SineSquare 2 pitch input
-SineSquare 1 sine --> Humpback 1 audio input
+SineSquare 1 sine --> SineSquare 2 FM input (cross-mod: VCO 1 modulates VCO 2)
+SineSquare 2 sine --> SineSquare 1 FM input (cross-mod: VCO 2 modulates VCO 1)
+SineSquare 1 square --> Humpback 1 audio input
 CV Out 2          --> Humpback 1 CV input (velocity controls cutoff)
 Pulse Out 1       --> Slope 1 signal input (trigger)
-Slope 1 output    --> Ring Mod modulation input (VCA envelope)
-Humpback 1 LP out --> Ring Mod audio input
-Ring Mod output   --> Mix channel 1
-SineSquare 2 sine --> Mix channel 2
+Slope 1 output    --> Humpback 1 FM input (envelope opens filter as VCA)
+Humpback 1 LP out --> Mix channel 1
+SineSquare 2 square --> Mix channel 2
 ```
 
-Set Y knob (play mode) to noon for unison, slightly off for detuned chorus, or to +7 for a fifth. SineSquare 1 goes through the Humpback filter — with the velocity CV driving the cutoff, high-velocity steps sound brighter and low-velocity steps stay dark. The Ring Mod acts as a VCA controlled by the Slope envelope. SineSquare 2 goes straight to the Mix as a raw drone layer. Set the Humpback resonance high for an acid flavour.
+The pitch inputs set the note for each VCO, while the FM inputs are used for cross-modulation between them — the VCOs modulate each other's frequency for complex, evolving timbres. Keep both FM attenuverters low for gentle beating, or turn them up for aggressive clangy sounds. Velocity drives the Humpback cutoff CV, so high-velocity steps sound brighter. The Slope envelope opens the filter via its FM input, acting as a VCA. SineSquare 2's square wave goes raw to the Mix as a second voice.
 
-Note: Audio Out 2 outputs pitch CV (not audio) — it approximates 1V/oct on the audio DAC. Set SineSquare 2's FM attenuverter to taste and tune by ear.
+Set Y knob (play mode) to noon for unison, slightly off for detuned chorus, or to +7 for a fifth.
 
-### 3. Noise Percussion with Slope Shaping
+Note: Audio Out 2 outputs pitch CV (not audio) — it approximates 1V/oct on the audio DAC. Set SineSquare 2's pitch tracking by ear.
 
-Use the white noise through a filter and envelope for hi-hat or snare textures. Velocity controls both the decay length and the filter brightness.
+### 3. Noise Percussion with Filter VCA
+
+Use the white noise through a filter shaped by a Slope envelope for hi-hat or snare textures. The Humpback's FM input acts as the amplitude control here, leaving the Ring Mod free for other uses.
 
 ```
-Audio Out 1       --> Humpback 1 audio input
-CV Out 2          --> Humpback 1 CV input (velocity opens/closes filter)
+Audio Out 1       --> Humpback 1 audio input (noise source)
+CV Out 2          --> Humpback 1 CV input (velocity controls cutoff brightness)
 Pulse Out 1       --> Slope 1 signal input (trigger)
-CV Out 2          --> Slope 1 CV input (velocity controls decay — mult or stack)
-Slope 1 output    --> Ring Mod modulation input
-Humpback 1 BP out --> Ring Mod audio input
-Ring Mod output   --> Mix channel 1
+Slope 1 output    --> Humpback 1 FM input (envelope opens filter as VCA)
+Humpback 1 BP out --> Mix channel 1
 ```
 
-The noise runs through the Humpback filter (bandpass output with resonance up for metallic hats, or lowpass for snare body), then through the Ring Mod as a VCA. Velocity does double duty here: it opens the filter cutoff and lengthens the Slope decay on high-velocity steps for bright, ringy hits, while low-velocity steps stay short and dull. You'll need a mult or stacked cable to send CV Out 2 to both the Humpback CV and Slope CV inputs — or choose one destination and experiment.
+The Slope envelope opens and closes the Humpback via its FM input — this effectively shapes the noise amplitude per step. The velocity CV on the Humpback's cutoff CV input controls the filter brightness, so high-velocity steps are brighter and more open while low-velocity steps stay dull. Set the filter to bandpass with resonance up for metallic hi-hat tones, or lowpass for snare body. Adjust Slope time for closed hats (short) vs open hats (long).
 
-### 4. Externally Clocked with 4 Voltages Transpose
+This patch uses only 4 cables and leaves the Ring Mod, SineSquare VCOs, second Slope, and second Humpback completely free — you could build a full pitched voice alongside using the remaining modules.
 
-Use the 4 Voltages module as a live performance keyboard to transpose the running sequence.
+### 4. Full Voice: Pitched Sequence + Noise Layer
+
+A more complete patch using both VCOs, both Slopes, and the Ring Mod. The pitched voice uses the Ring Mod as a VCA, and the noise layer uses the filter FM as a second VCA.
 
 ```
-4 Voltages output --> CV In 2 (global transpose, ±24 semitones)
-CV Out 1          --> SineSquare 1 pitch input
-CV Out 2          --> Slope 1 CV input (velocity controls decay)
-Pulse Out 1       --> Slope 1 signal input (trigger)
+CV Out 1          --> SineSquare 1 pitch input (VCO 1 pitch)
+Audio Out 2       --> SineSquare 2 pitch input (VCO 2 pitch)
+Pulse Out 1       --> Slope 1 signal input (trigger for pitched voice)
+CV Out 2          --> Slope 1 CV input (velocity controls pitched decay)
 SineSquare 1 sine --> Ring Mod audio input
-Slope 1 output    --> Ring Mod modulation input
+Slope 1 output    --> Ring Mod modulation input (VCA for pitched voice)
+Slope 1 output    --> SineSquare 1 FM input (pitch sweep on attack)
 Ring Mod output   --> Mix channel 1
-Pulse Out 2       --> Slope 2 signal input (end-of-cycle trigger)
+SineSquare 2 sine --> Mix channel 2 (drone/interval layer)
+Audio Out 1       --> Humpback 1 audio input (noise for percussion)
+Pulse Out 1       --> Slope 2 signal input (same trigger for noise)
+Slope 2 output    --> Humpback 1 FM input (envelope opens filter as VCA)
+Humpback 1 BP out --> Mix channel 3
+4 Voltages output --> CV In 2 (live transpose)
 ```
 
-The sequence runs on the internal clock (Main knob). Pressing buttons on 4 Voltages shifts the whole pattern up or down in pitch via CV In 2. Velocity controls the Slope decay per step, so accented steps ring out while ghost notes stay tight. Pulse Out 2 fires once per cycle — patch it to Slope 2 to create a slow envelope that marks the downbeat, useful for modulating filter cutoff or another parameter at the phrase level. Shorten the sequence to 3 or 4 steps with X knob for tighter, faster loops that respond well to live transposition.
+This combines a pitched percussion voice (VCO 1 through Ring Mod VCA with pitch sweep) with a noise percussion layer (white noise through Humpback filter VCA) and a raw interval drone (VCO 2 direct to mixer). The two Slopes fire on the same step trigger but can have different decay times — set Slope 1 longer for the pitched voice and Slope 2 shorter for tight noise hits. Use 4 Voltages to transpose the whole pattern live. Set the VCO 1 FM attenuverter low for subtle kick-drum pitch zaps. Shorten the sequence to 3–4 steps for tighter grooves.
 
 ## Randomisation
 
