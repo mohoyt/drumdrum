@@ -4,6 +4,14 @@ A DFAM-style 8-step sequencer for the [Music Thing Modular Workshop System Compu
 
 drumdrum gives you a dual-VCO pitch sequencer with per-step velocity, white noise, step triggers, and end-of-cycle triggers — the core building blocks of a DFAM-style percussion voice, all from a single program card. Sequence data is randomised on every reset, so you can roll the dice on a new pattern any time.
 
+You can drive the sequencer three ways, all sharing the same state:
+
+- **The card itself** — three knobs, the switch, and the six panel LEDs (always available).
+- **A Monome Grid** (16×8) plugged into the front USB jack for hands-on visual editing.
+- **A browser editor** in Chrome/Edge over WebMIDI when the card is connected to a computer.
+
+The card decides between Grid and browser at boot from the USB-C cable orientation: peripheral plugged in → Grid mode, computer plugged in → browser mode. Power-cycle to switch. Panel knobs and switch keep working in all modes.
+
 ## Controls
 
 ### Switch Positions
@@ -56,6 +64,61 @@ Step 4:  *  *     Step 8:  .  .
 ```
 
 This encoding is used for playback position, edit cursor, and sequence length preview.
+
+## Monome Grid mode
+
+When you plug a Monome Grid (any 16×8 model — modern native-USB or older FTDI-based) into the card's front USB port and power on, the firmware brings up USB host mode and the Grid lights up within about a second. Panel controls keep working in parallel; both interfaces edit the same step data live.
+
+```
+            LEFT HALF — sequence overview              RIGHT HALF — selected-step editor
+       ┌──────────────────────────────┐           ┌──────────────────────────────┐
+row 0  │ length selector (cols 0..7)  │           │ . . . . . . . PLAY/PAUSE     │
+row 1  │ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄  │           │           ↑ high pitch       │
+row 2  │ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄  │           │                              │
+row 3  │   per-step bars              │           │     pitch picker (40 cells,  │
+row 4  │   height = pitch             │           │     every MIDI note          │
+row 5  │   brightness = velocity      │           │     reachable)               │
+row 6  │ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄  │           │           ↓ low pitch        │
+row 7  │ ▓▓▓▓▓▓▓▓ steps 1..8 ▓▓▓▓▓▓▓▓ │           │ velocity bar (16 cells)      │
+       └──────────────────────────────┘           └──────────────────────────────┘
+         cols 0..7                                  cols 8..15
+```
+
+### Left half — overview of all 8 steps
+
+- **Row 0** is the **length selector**. Tapping column N sets the sequence length to N+1 steps. Cells 0..length-1 stay lit so you always see the current length.
+- **Rows 1–7** are a vertical bar per step, where the **bar height encodes pitch** and the **brightness encodes velocity**. The currently-playing step's bar is full bright; the selected edit step has a brightness floor so it stays visible even at low velocity. Out-of-length steps are dark.
+- Tapping any cell in rows 1–7 of a step's column **selects that step for editing** — the right half then shows its pitch and velocity for fine adjustment.
+
+### Right half — editor for the selected step
+
+- **(col 15, row 0): play/pause toggle.** Bright when playing, dim when paused.
+- **Rows 1–5: pitch picker.** 40 cells covering all 128 MIDI pitches. Bottom-left = lowest pitch, top-right = highest. Each cell represents 3 or 4 semitones (every MIDI pitch lands somewhere); tap to coarse-pick, then use the panel **X knob in edit mode** for fine tuning between bin centres.
+- **Rows 6–7: velocity bar.** 16 cells from bottom-left (low) to top-right (high). Cells fill row 7 first then row 6 as velocity climbs.
+
+Edits made on the Grid persist — the panel knob will not overwrite them unless you actually turn it (the knob has a "must move to take over" guard so a parked knob can't silently clobber Grid changes).
+
+## Browser editor (WebMIDI)
+
+When you plug the card into a computer instead of a Grid, it appears as a USB MIDI device named **DrumDrum**. Open `editor.html` in Chrome or Edge — it's a single self-contained file with no build step:
+
+```bash
+open editor.html              # macOS
+xdg-open editor.html          # Linux
+start editor.html             # Windows
+```
+
+Or just double-click the file. Chrome treats `file://` as a secure context, so WebMIDI works without a server. The first time, Chrome will ask for "MIDI device access (with system exclusive)" — accept.
+
+The status pill in the top-right turns green once the editor finds the card. The UI shows:
+
+- **Length selector** — choose 2–8 steps.
+- **Play/Pause** — toggles the sequencer.
+- **8 step rows** — each with a note dropdown (C-1 to G9) and a velocity slider (0–255). The currently-playing row highlights live.
+
+Edits push to the card immediately; panel-knob changes get pushed back to the browser the same way, so the UI stays in sync no matter where the change came from.
+
+The protocol is plain MIDI SysEx with manufacturer ID `0x7D`. Anyone curious can wire up their own client — see `midi_sysex.h` for the full command list.
 
 ## Jacks
 
@@ -177,14 +240,16 @@ Flash the resulting `drumdrum.uf2` to the Workshop Computer by holding BOOT whil
 
 ## Technical Details
 
-- Single-file implementation (`main.cpp`), ~450 lines
-- All DSP and sequencer logic runs in `ProcessSample()` at 48kHz in interrupt context
-- Pure integer arithmetic throughout — no float, no division
-- White noise via xorshift32 PRNG, seeded from hardware timer on each boot
-- CV Out 1 uses EEPROM-calibrated `CVOutMIDINote()` for accurate 1V/oct tracking
-- Audio Out 2 approximates 1V/oct on the 12-bit audio DAC (~28.4 DAC units/semitone, uncalibrated)
-- System clock set to 144MHz to reduce ADC tonal artifacts
-- All code copied to RAM (`copy_to_ram`) to eliminate flash cache jitter
+- **Core 0** runs the sequencer and audio DSP in `ProcessSample()` at 48 kHz in interrupt context. Pure integer arithmetic, no float, no division.
+- **Core 1** owns the USB stack — TinyUSB host (Monome Grid via the vendored mext serial protocol) or device (USB MIDI for the browser editor), decided once at boot from the USB-C CC pins via `USBPowerState()`.
+- All three control surfaces share a single `SharedState` struct (`shared_state.h`); cross-core writes are atomic on the M0+, no locks needed. `tickEpoch` is the cross-core "something changed" signal.
+- White noise via xorshift32 PRNG, seeded from the hardware timer on each boot.
+- CV Out 1 uses EEPROM-calibrated `CVOutMIDINote()` for accurate 1V/oct tracking.
+- Audio Out 2 approximates 1V/oct on the 12-bit audio DAC (~28.4 DAC units/semitone, uncalibrated).
+- System clock set to 144 MHz to reduce ADC tonal artifacts; all code copied to RAM (`copy_to_ram`) to eliminate flash cache jitter.
+- 150 ms boot mute holds audio + pulse outputs at zero so DAC settling and the first trigger don't click.
+
+**Source files:** `main.cpp` (sequencer + audio + role select), `shared_state.h` (cross-core data), `usb_core1.cpp` (USB task pump), `tusb_config.h` + `usb_descriptors.c` (TinyUSB), `monome_mext.c/h` (Grid serial protocol, vendored from MLRws), `grid_ui.cpp/h` (Grid layout + key dispatch), `midi_sysex.cpp/h` (browser-protocol parser/encoder), `editor.html` (browser editor).
 
 ## License
 
