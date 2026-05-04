@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>DrumDrum WebMIDI Editor</title>
+<style>
+  :root {
+    --bg: #14171c;
+    --panel: #1d222a;
+    --ink: #e6e8ea;
+    --mute: #7c8694;
+    --line: #2a313c;
+    --accent: #ffb454;
+    --accent-dim: #6e4d20;
+    --good: #6ee7a3;
+    --bad: #ef4d6a;
+    --warn: #f5c451;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 80px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: 0.04em; }
+  .sub { color: var(--mute); font-size: 12px; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad);
+         box-shadow: 0 0 6px currentColor; }
+  .status.connecting .dot { background: var(--warn); }
+  .status.connected  .dot { background: var(--good); }
+
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px 14px 16px; margin-top: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  label { font-size: 12px; color: var(--mute); }
+  select, input[type=range], button {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
+  }
+  select:focus, button:focus { outline: 2px solid var(--accent); }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #1b1208; border-color: var(--accent); font-weight: 600; }
+  button.primary.paused { background: var(--accent-dim); color: var(--ink); }
+
+  table.steps { width: 100%; border-collapse: collapse; }
+  table.steps th, table.steps td { padding: 8px 6px; text-align: left; vertical-align: middle; }
+  table.steps th { color: var(--mute); font-weight: normal; font-size: 11px;
+                   text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--line); }
+  table.steps tr.step td { border-bottom: 1px solid var(--line); }
+  table.steps tr.step.now td { background: rgba(255,180,84,0.08); }
+  table.steps tr.step.now td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  table.steps tr.step.dim td { opacity: 0.45; }
+
+  .stepnum { font-weight: 600; color: var(--accent); width: 28px; text-align: center; }
+  .vel-cell { width: 60%; }
+  .vel-cell input { width: 100%; }
+  .vel-num { display: inline-block; min-width: 32px; text-align: right; color: var(--mute); font-size: 12px; }
+
+  footer { margin-top: 18px; color: var(--mute); font-size: 11px; line-height: 1.6; }
+  footer code { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>DrumDrum</h1>
+    <div class="sub">DFAM-style sequencer · Workshop Computer</div>
+  </div>
+  <div id="status" class="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
+</header>
+
+<section>
+  <div class="row" style="justify-content: space-between;">
+    <div class="row">
+      <label for="length">Length</label>
+      <select id="length"></select>
+    </div>
+    <button id="playPause" class="primary">Pause</button>
+  </div>
+</section>
+
+<section>
+  <table class="steps" id="stepTable">
+    <thead>
+      <tr><th>#</th><th>Note</th><th class="vel-cell">Velocity</th></tr>
+    </thead>
+    <tbody id="stepBody"></tbody>
+  </table>
+</section>
+
+<footer>
+  Open in Chrome or Edge with the DrumDrum card connected via USB.
+  WebMIDI permission is required for SysEx (the prompt appears the first time).
+  Edits push to the card immediately; the card pushes panel-knob changes back the same way.
+</footer>
+
+</div>
+
+<script>
+"use strict";
+
+// ── Protocol constants (must match midi_sysex.h on the firmware side) ──
+const SYSEX_MFR              = 0x7D;
+const SYSEX_SET_PITCH        = 0x01;
+const SYSEX_SET_VELOCITY     = 0x02;
+const SYSEX_SET_LENGTH       = 0x03;
+const SYSEX_SET_PLAYING      = 0x04;
+const SYSEX_REQUEST_DUMP     = 0x05;
+const SYSEX_FULL_DUMP        = 0x10;
+const SYSEX_TICK             = 0x11;
+const SYSEX_PARAM_UPDATE     = 0x12;
+
+const PRODUCT_NAME = "DrumDrum";
+
+// ── State held in the page ──────────────────────────────────────────
+const state = {
+  pitch: new Uint8Array(8),
+  velocity: new Uint8Array(8),
+  seqLength: 8,
+  playing: 1,
+  currentStep: 0,
+};
+let midiIn = null;
+let midiOut = null;
+
+// ── DOM build ───────────────────────────────────────────────────────
+function noteName(n) {
+  const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  const oct = Math.floor(n / 12) - 1;     // MIDI 0 → C-1
+  return names[n % 12] + oct;
+}
+
+function buildLengthOptions() {
+  const sel = document.getElementById("length");
+  for (let n = 2; n <= 8; n++) {
+    const opt = document.createElement("option");
+    opt.value = n; opt.textContent = n + " steps";
+    sel.appendChild(opt);
+  }
+  sel.addEventListener("change", () => {
+    state.seqLength = parseInt(sel.value, 10);
+    sendSetLength(state.seqLength);
+    refreshActiveRows();
+  });
+}
+
+function buildStepRows() {
+  const body = document.getElementById("stepBody");
+  for (let i = 0; i < 8; i++) {
+    const tr = document.createElement("tr");
+    tr.className = "step";
+    tr.dataset.idx = i;
+
+    const numTd = document.createElement("td"); numTd.className = "stepnum"; numTd.textContent = (i + 1);
+    const noteTd = document.createElement("td");
+    const noteSel = document.createElement("select");
+    for (let n = 0; n < 128; n++) {
+      const o = document.createElement("option");
+      o.value = n; o.textContent = noteName(n) + "  (" + n + ")";
+      noteSel.appendChild(o);
+    }
+    noteSel.addEventListener("change", () => {
+      const v = parseInt(noteSel.value, 10);
+      state.pitch[i] = v;
+      sendSetPitch(i, v);
+    });
+    noteTd.appendChild(noteSel);
+
+    const velTd = document.createElement("td"); velTd.className = "vel-cell";
+    const velRange = document.createElement("input");
+    velRange.type = "range"; velRange.min = 0; velRange.max = 255;
+    const velNum = document.createElement("span"); velNum.className = "vel-num";
+    velRange.addEventListener("input", () => {
+      const v = parseInt(velRange.value, 10);
+      state.velocity[i] = v;
+      velNum.textContent = v;
+      sendSetVelocity(i, v);
+    });
+    velTd.appendChild(velRange);
+    velTd.appendChild(velNum);
+
+    tr.appendChild(numTd);
+    tr.appendChild(noteTd);
+    tr.appendChild(velTd);
+    body.appendChild(tr);
+  }
+}
+
+function refreshAll() {
+  document.getElementById("length").value = state.seqLength;
+  const pp = document.getElementById("playPause");
+  pp.textContent = state.playing ? "Pause" : "Play";
+  pp.classList.toggle("paused", !state.playing);
+
+  const rows = document.querySelectorAll("tr.step");
+  for (let i = 0; i < 8; i++) {
+    const row = rows[i];
+    const noteSel = row.querySelector("select");
+    const velRange = row.querySelector("input[type=range]");
+    const velNum = row.querySelector(".vel-num");
+    noteSel.value = state.pitch[i];
+    velRange.value = state.velocity[i];
+    velNum.textContent = state.velocity[i];
+  }
+  refreshActiveRows();
+}
+
+function refreshActiveRows() {
+  const rows = document.querySelectorAll("tr.step");
+  rows.forEach((row, i) => {
+    row.classList.toggle("dim", i >= state.seqLength);
+    row.classList.toggle("now", state.playing && i === state.currentStep);
+  });
+}
+
+// ── MIDI send helpers ───────────────────────────────────────────────
+function sendSysex(payload) {
+  if (!midiOut) return;
+  const msg = [0xF0, SYSEX_MFR, ...payload, 0xF7];
+  midiOut.send(msg);
+}
+function sendSetPitch(step, pitch)     { sendSysex([SYSEX_SET_PITCH, step & 7, pitch & 0x7F]); }
+function sendSetVelocity(step, vel)    { sendSysex([SYSEX_SET_VELOCITY, step & 7, (vel >> 4) & 0x0F, vel & 0x0F]); }
+function sendSetLength(len)            { sendSysex([SYSEX_SET_LENGTH, len & 0x0F]); }
+function sendSetPlaying(p)             { sendSysex([SYSEX_SET_PLAYING, p ? 1 : 0]); }
+function sendRequestDump()             { sendSysex([SYSEX_REQUEST_DUMP]); }
+
+// ── MIDI receive ────────────────────────────────────────────────────
+function onMidiMessage(ev) {
+  const data = ev.data;
+  if (data.length < 3 || data[0] !== 0xF0 || data[1] !== SYSEX_MFR) return;
+  // body = data[1..len-2] (skip F0 and F7)
+  const body = data.slice(1, data.length - 1);
+  if (body.length < 2) return;
+  const cmd = body[1];
+
+  switch (cmd) {
+    case SYSEX_FULL_DUMP: {
+      // body[2..]: seqLength, playing, currentStep, pitch[0..7], v_hi[0]/v_lo[0]...
+      if (body.length < 2 + 1 + 1 + 1 + 8 + 16) return;
+      let p = 2;
+      state.seqLength    = body[p++];
+      state.playing      = body[p++];
+      state.currentStep  = body[p++];
+      for (let i = 0; i < 8; i++) state.pitch[i] = body[p++];
+      for (let i = 0; i < 8; i++) {
+        const hi = body[p++], lo = body[p++];
+        state.velocity[i] = ((hi & 0x0F) << 4) | (lo & 0x0F);
+      }
+      refreshAll();
+      break;
+    }
+    case SYSEX_TICK: {
+      if (body.length < 3) return;
+      state.currentStep = body[2];
+      refreshActiveRows();
+      break;
+    }
+    case SYSEX_PARAM_UPDATE: {
+      if (body.length < 3) return;
+      const sub = body[2];
+      switch (sub) {
+        case SYSEX_SET_PITCH:
+          if (body.length < 5) return;
+          state.pitch[body[3] & 7] = body[4] & 0x7F;
+          break;
+        case SYSEX_SET_VELOCITY:
+          if (body.length < 6) return;
+          state.velocity[body[3] & 7] = ((body[4] & 0x0F) << 4) | (body[5] & 0x0F);
+          break;
+        case SYSEX_SET_LENGTH:
+          if (body.length < 4) return;
+          state.seqLength = body[3];
+          break;
+        case SYSEX_SET_PLAYING:
+          if (body.length < 4) return;
+          state.playing = body[3] ? 1 : 0;
+          break;
+      }
+      refreshAll();
+      break;
+    }
+  }
+}
+
+// ── Connection lifecycle ────────────────────────────────────────────
+function setStatus(kind, text) {
+  const s = document.getElementById("status");
+  s.classList.remove("connecting", "connected");
+  if (kind) s.classList.add(kind);
+  document.getElementById("statusText").textContent = text;
+}
+
+function findPort(map) {
+  for (const port of map.values()) {
+    if (port.name && port.name.indexOf(PRODUCT_NAME) !== -1) return port;
+  }
+  return null;
+}
+
+async function connect(midiAccess) {
+  const inP  = findPort(midiAccess.inputs);
+  const outP = findPort(midiAccess.outputs);
+
+  if (midiIn  && midiIn  !== inP)  midiIn.onmidimessage = null;
+  midiIn  = inP;
+  midiOut = outP;
+
+  if (midiIn && midiOut) {
+    midiIn.onmidimessage = onMidiMessage;
+    setStatus("connected", "Connected · " + midiOut.name);
+    sendRequestDump();
+  } else {
+    setStatus("connecting", "Searching for DrumDrum…");
+  }
+}
+
+async function start() {
+  if (!navigator.requestMIDIAccess) {
+    setStatus(null, "WebMIDI not supported in this browser");
+    return;
+  }
+  setStatus("connecting", "Requesting MIDI access…");
+  try {
+    const access = await navigator.requestMIDIAccess({ sysex: true });
+    access.onstatechange = () => connect(access);
+    await connect(access);
+  } catch (err) {
+    setStatus(null, "MIDI access denied: " + err.message);
+  }
+}
+
+document.getElementById("playPause").addEventListener("click", () => {
+  state.playing = state.playing ? 0 : 1;
+  sendSetPlaying(state.playing);
+  refreshAll();
+});
+
+buildLengthOptions();
+buildStepRows();
+refreshAll();
+start();
+</script>
+</body>
+</html>
