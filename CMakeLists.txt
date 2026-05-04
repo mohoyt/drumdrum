@@ -20,7 +20,14 @@ project(drumdrum C CXX ASM)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
-add_executable(drumdrum main.cpp)
+add_executable(drumdrum
+    main.cpp
+    usb_core1.cpp
+    usb_descriptors.c
+    midi_sysex.cpp
+    monome_mext.c
+    grid_ui.cpp
+)
 
 # Warnings: catch accidental double-precision and other issues
 target_compile_options(drumdrum PRIVATE -Wdouble-promotion -Wfloat-conversion -Wall -Wextra)
@@ -30,8 +37,11 @@ target_link_options(drumdrum PRIVATE -Wl,--print-memory-usage)
 target_compile_definitions(drumdrum PRIVATE PICO_XOSC_STARTUP_DELAY_MULTIPLIER=64)
 
 target_include_directories(drumdrum PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(drumdrum pico_unique_id pico_stdlib hardware_dma hardware_i2c
-    hardware_pwm hardware_adc hardware_spi hardware_clocks)
+target_link_libraries(drumdrum
+    pico_unique_id pico_stdlib pico_multicore
+    hardware_dma hardware_i2c hardware_pwm hardware_adc hardware_spi hardware_clocks
+    tinyusb_device tinyusb_host tinyusb_board
+)
 
 # Copy all code to RAM — eliminates flash cache miss timing jitter
 pico_set_binary_type(drumdrum copy_to_ram)
