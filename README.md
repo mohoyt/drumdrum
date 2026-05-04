@@ -69,19 +69,29 @@ This encoding is used for playback position, edit cursor, and sequence length pr
 
 When you plug a Monome Grid (any 16×8 model — modern native-USB or older FTDI-based) into the card's front USB port and power on, the firmware brings up USB host mode and the Grid lights up within about a second. Panel controls keep working in parallel; both interfaces edit the same step data live.
 
+The 16×8 Grid is split into two halves. The **left half** (cols 0–7) is an overview of all 8 steps; the **right half** (cols 8–15) is a detailed editor for whichever step you've selected.
+
 ```
-            LEFT HALF — sequence overview                RIGHT HALF — selected-step editor
-       ┌───────────────────────────────┐              ┌───────────────────────────────┐
-row 0  │ length selector (cols 0..7)   │              │ . . . . . . . PLAY/PAUSE      │
-row 1  │ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ │              │            high pitch          │
-row 2  │ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ │              │                                │
-row 3  │   per-step bars               │              │      pitch picker (40 cells,  │
-row 4  │   height = pitch              │              │      every MIDI note          │
-row 5  │   brightness = velocity       │              │       reachable)              │
-row 6  │ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ ┄ │              │            low pitch           │
-row 7  │ ▓▓▓▓▓▓▓▓ steps 1..8 ▓▓▓▓▓▓▓▓ │              │ velocity bar (16 cells)       │
-       └───────────────────────────────┘              └───────────────────────────────┘
-         cols 0..7                                       cols 8..15
+LEFT HALF — overview (cols 0–7)
+
+  row 0      length selector
+  rows 1–7   per-step bars
+             ( height = pitch,
+               brightness = velocity )
+
+  one column per step — step 1 = col 0,
+  step 8 = col 7
+```
+
+```
+RIGHT HALF — editor for selected step
+            (cols 8–15)
+
+  row 0      . . . . . . . PLAY
+  rows 1–5   pitch picker (40 cells)
+             bottom = low, top = high
+  rows 6–7   velocity bar (16 cells)
+             bottom-left = 0, top-right = max
 ```
 
 ### Left half — overview of all 8 steps
