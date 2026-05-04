@@ -248,8 +248,11 @@ public:
             PulseOut1(false);
             PulseOut2(false);
             if (bootMute == 0) {
+                // Step 1 fires audibly when the mute lifts. End-of-cycle
+                // is a sequence-wrap event so we deliberately don't arm
+                // it here — patches on Pulse Out 2 shouldn't see a pulse
+                // at every power-up.
                 trigCounter = TRIGGER_LEN;
-                eocCounter  = TRIGGER_LEN;
             }
             return;
         }
@@ -516,8 +519,15 @@ public:
             }
         }
 
-        // Clamp positions if sequence length was shortened
-        if (gState.currentStep >= gState.seqLength) gState.currentStep = 0;
+        // Clamp positions if sequence length was shortened. Bump
+        // tickEpoch on a currentStep clamp so Core 1 (browser editor)
+        // sees the position change immediately — otherwise it would
+        // keep highlighting a stale step until the next natural tick,
+        // and indefinitely if playback is paused.
+        if (gState.currentStep >= gState.seqLength) {
+            gState.currentStep = 0;
+            gState.tickEpoch++;
+        }
         if (gState.editStep    >= gState.seqLength) gState.editStep    = 0;
 
 
