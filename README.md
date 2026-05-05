@@ -108,17 +108,38 @@ xdg-open editor.html          # Linux
 start editor.html             # Windows
 ```
 
-Or just double-click the file. Chrome treats `file://` as a secure context, so WebMIDI works without a server. The first time, Chrome will ask for "MIDI device access (with system exclusive)" — accept.
+Or just double-click the file. Chrome treats `file://` as a secure context, so WebMIDI works without a server. The first time, Chrome will ask for "MIDI device access (with system exclusive)" — accept. The status pill in the top-right turns green and the UI populates from the card automatically.
 
-The status pill in the top-right turns green once the editor finds the card. The UI shows:
+![Light mode](docs/editor-light.png)
 
-- **Length selector** — choose 2–8 steps.
-- **Play/Pause** — toggles the sequencer.
-- **8 step rows** — each with a note dropdown (C-1 to G9) and a velocity slider (0–255). The currently-playing row highlights live.
+![Dark mode](docs/editor-dark.png)
 
-Edits push to the card immediately; panel-knob changes get pushed back to the browser the same way, so the UI stays in sync no matter where the change came from.
+### Layout
 
-The protocol is plain MIDI SysEx with manufacturer ID `0x7D`. Anyone curious can wire up their own client — see `midi_sysex.h` for the full command list.
+- **Header** — `drumdrum.` wordmark on the left, then connection-status pill, dark/light mode toggle, and the big **Play / Pause** button.
+- **Length ribbon** — eight numbered cells. Click a number to set the length, or grab the orange handle on the right edge and drag. Cells past the current length are visibly hatched.
+- **Pattern bar chart** — one bar per step. **Bar height = pitch** (0–127, axis labels on the left); **bar opacity = velocity** (low velocity is washed out, high velocity is fully saturated). The currently-playing step is the coral bar with a glowing dot above it; the selected step is shown in the orange accent. Click any bar to select that step for editing. Step number and note name sit underneath each bar.
+- **Step detail panel** — for the selected step:
+  - **Editing** column on the left shows the step number large, with prev/next nav.
+  - **Pitch** column has a 3-octave piano strip (click any key to set pitch, centred on the current note) plus a fine 0–127 slider underneath. Current note name and number show on the right.
+  - **Velocity** column has a click-and-drag scrub bar with the current value pinned on it, plus a 0–255 slider underneath.
+- **Footer** — keyboard-shortcut cheat sheet on the left, protocol info on the right.
+
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Space` | Play / pause |
+| `2`–`8` | Set sequence length |
+| `←` / `→` | Select previous / next step |
+| `↑` / `↓` | Pitch ± 1 semitone |
+| `J` / `K` | Pitch ± octave |
+| `Shift+↑` / `Shift+↓` | Velocity ± 1 |
+| `Shift+J` / `Shift+K` | Velocity ± 16 |
+
+### How it talks to the card
+
+Edits push to the card immediately; panel-knob changes get pushed back to the browser the same way, so the UI stays in sync no matter where the change came from. The protocol is plain MIDI SysEx with manufacturer ID `0x7D`. Anyone curious can wire up their own client — see `midi_sysex.h` for the full command list.
 
 ## Jacks
 
