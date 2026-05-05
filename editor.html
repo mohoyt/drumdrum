@@ -3,106 +3,39 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>DrumDrum WebMIDI Editor</title>
+<title>DrumDrum — WebMIDI editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
-  :root {
-    --bg: #14171c;
-    --panel: #1d222a;
-    --ink: #e6e8ea;
-    --mute: #7c8694;
-    --line: #2a313c;
-    --accent: #ffb454;
-    --accent-dim: #6e4d20;
-    --good: #6ee7a3;
-    --bad: #ef4d6a;
-    --warn: #f5c451;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
-               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 80px; }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: 0.04em; }
-  .sub { color: var(--mute); font-size: 12px; }
-  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad);
-         box-shadow: 0 0 6px currentColor; }
-  .status.connecting .dot { background: var(--warn); }
-  .status.connected  .dot { background: var(--good); }
-
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-            padding: 14px 14px 16px; margin-top: 14px; }
-  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  label { font-size: 12px; color: var(--mute); }
-  select, input[type=range], button {
-    font: inherit; color: var(--ink); background: var(--bg);
-    border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
-  }
-  select:focus, button:focus { outline: 2px solid var(--accent); }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); color: #1b1208; border-color: var(--accent); font-weight: 600; }
-  button.primary.paused { background: var(--accent-dim); color: var(--ink); }
-
-  table.steps { width: 100%; border-collapse: collapse; }
-  table.steps th, table.steps td { padding: 8px 6px; text-align: left; vertical-align: middle; }
-  table.steps th { color: var(--mute); font-weight: normal; font-size: 11px;
-                   text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--line); }
-  table.steps tr.step td { border-bottom: 1px solid var(--line); }
-  table.steps tr.step.now td { background: rgba(255,180,84,0.08); }
-  table.steps tr.step.now td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-  table.steps tr.step.dim td { opacity: 0.45; }
-
-  .stepnum { font-weight: 600; color: var(--accent); width: 28px; text-align: center; }
-  .vel-cell { width: 60%; }
-  .vel-cell input { width: 100%; }
-  .vel-num { display: inline-block; min-width: 32px; text-align: right; color: var(--mute); font-size: 12px; }
-
-  footer { margin-top: 18px; color: var(--mute); font-size: 11px; line-height: 1.6; }
-  footer code { color: var(--ink); }
+  html, body { margin: 0; padding: 0; background: #f3f1ea; height: 100%; }
+  body { font-family: 'Space Grotesk', system-ui, sans-serif;
+         display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; padding: 28px; }
+  #root { width: 100%; max-width: 1180px; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.45 } }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="root"></div>
 
-<header>
-  <div>
-    <h1>DrumDrum</h1>
-    <div class="sub">DFAM-style sequencer · Workshop Computer</div>
-  </div>
-  <div id="status" class="status"><span class="dot"></span><span id="statusText">Disconnected</span></div>
-</header>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
-<section>
-  <div class="row" style="justify-content: space-between;">
-    <div class="row">
-      <label for="length">Length</label>
-      <select id="length"></select>
-    </div>
-    <button id="playPause" class="primary">Pause</button>
-  </div>
-</section>
-
-<section>
-  <table class="steps" id="stepTable">
-    <thead>
-      <tr><th>#</th><th>Note</th><th class="vel-cell">Velocity</th></tr>
-    </thead>
-    <tbody id="stepBody"></tbody>
-  </table>
-</section>
-
-<footer>
-  Open in Chrome or Edge with the DrumDrum card connected via USB.
-  WebMIDI permission is required for SysEx (the prompt appears the first time).
-  Edits push to the card immediately; the card pushes panel-knob changes back the same way.
-</footer>
-
-</div>
-
-<script>
+<script type="text/babel">
 "use strict";
 
-// ── Protocol constants (must match midi_sysex.h on the firmware side) ──
+// ─── Helpers ─────────────────────────────────────────────────────────
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+function noteName(n) {
+  if (n < 0 || n > 127) return "—";
+  const oct = Math.floor(n / 12) - 1;
+  return NOTE_NAMES[n % 12] + oct;
+}
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ─── SysEx protocol (matches midi_sysex.h on the firmware) ───────────
 const SYSEX_MFR              = 0x7D;
 const SYSEX_SET_PITCH        = 0x01;
 const SYSEX_SET_VELOCITY     = 0x02;
@@ -112,237 +45,770 @@ const SYSEX_REQUEST_DUMP     = 0x05;
 const SYSEX_FULL_DUMP        = 0x10;
 const SYSEX_TICK             = 0x11;
 const SYSEX_PARAM_UPDATE     = 0x12;
+const PRODUCT_NAME           = "DrumDrum";
 
-const PRODUCT_NAME = "DrumDrum";
+// ─── WebMIDI-driven pattern store ────────────────────────────────────
+// Mirrors the firmware's SharedState. Setters fan out to both local
+// React state (so the UI updates instantly) and an outbound SysEx
+// message (so the firmware learns about the change). Inbound SysEx
+// updates state too — that's how panel-knob changes show up here.
+function usePattern() {
+  const [pitch,    setPitch]    = React.useState(() => Array(8).fill(60));
+  const [velocity, setVel]      = React.useState(() => Array(8).fill(128));
+  const [seqLength, setSeqLen]  = React.useState(8);
+  const [playing,  setPlayingS] = React.useState(true);
+  const [step,     setStep]     = React.useState(0);
+  const [conn,     setConn]     = React.useState({ tone: 'searching', label: 'Searching for DrumDrum…' });
 
-// ── State held in the page ──────────────────────────────────────────
-const state = {
-  pitch: new Uint8Array(8),
-  velocity: new Uint8Array(8),
-  seqLength: 8,
-  playing: 1,
-  currentStep: 0,
-};
-let midiIn = null;
-let midiOut = null;
+  const midiOut = React.useRef(null);
 
-// ── DOM build ───────────────────────────────────────────────────────
-function noteName(n) {
-  const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-  const oct = Math.floor(n / 12) - 1;     // MIDI 0 → C-1
-  return names[n % 12] + oct;
-}
+  const sendSysex = React.useCallback((payload) => {
+    if (!midiOut.current) return;
+    try { midiOut.current.send([0xF0, SYSEX_MFR, ...payload, 0xF7]); }
+    catch (e) { /* ignore — port may have just gone away */ }
+  }, []);
 
-function buildLengthOptions() {
-  const sel = document.getElementById("length");
-  for (let n = 2; n <= 8; n++) {
-    const opt = document.createElement("option");
-    opt.value = n; opt.textContent = n + " steps";
-    sel.appendChild(opt);
-  }
-  sel.addEventListener("change", () => {
-    state.seqLength = parseInt(sel.value, 10);
-    sendSetLength(state.seqLength);
-    refreshActiveRows();
-  });
-}
+  const setStepPitch = React.useCallback((i, v) => {
+    const c = clamp(v, 0, 127);
+    setPitch(p => { const n = p.slice(); n[i] = c; return n; });
+    sendSysex([SYSEX_SET_PITCH, i & 7, c & 0x7F]);
+  }, [sendSysex]);
 
-function buildStepRows() {
-  const body = document.getElementById("stepBody");
-  for (let i = 0; i < 8; i++) {
-    const tr = document.createElement("tr");
-    tr.className = "step";
-    tr.dataset.idx = i;
+  const setStepVel = React.useCallback((i, v) => {
+    const c = clamp(v, 0, 255);
+    setVel(p => { const n = p.slice(); n[i] = c; return n; });
+    sendSysex([SYSEX_SET_VELOCITY, i & 7, (c >> 4) & 0x0F, c & 0x0F]);
+  }, [sendSysex]);
 
-    const numTd = document.createElement("td"); numTd.className = "stepnum"; numTd.textContent = (i + 1);
-    const noteTd = document.createElement("td");
-    const noteSel = document.createElement("select");
-    for (let n = 0; n < 128; n++) {
-      const o = document.createElement("option");
-      o.value = n; o.textContent = noteName(n) + "  (" + n + ")";
-      noteSel.appendChild(o);
-    }
-    noteSel.addEventListener("change", () => {
-      const v = parseInt(noteSel.value, 10);
-      state.pitch[i] = v;
-      sendSetPitch(i, v);
-    });
-    noteTd.appendChild(noteSel);
+  const setLen = React.useCallback((n) => {
+    const c = clamp(n, 2, 8);
+    setSeqLen(c);
+    sendSysex([SYSEX_SET_LENGTH, c & 0x0F]);
+  }, [sendSysex]);
 
-    const velTd = document.createElement("td"); velTd.className = "vel-cell";
-    const velRange = document.createElement("input");
-    velRange.type = "range"; velRange.min = 0; velRange.max = 255;
-    const velNum = document.createElement("span"); velNum.className = "vel-num";
-    velRange.addEventListener("input", () => {
-      const v = parseInt(velRange.value, 10);
-      state.velocity[i] = v;
-      velNum.textContent = v;
-      sendSetVelocity(i, v);
-    });
-    velTd.appendChild(velRange);
-    velTd.appendChild(velNum);
+  const setPlaying = React.useCallback((v) => {
+    setPlayingS(!!v);
+    sendSysex([SYSEX_SET_PLAYING, v ? 1 : 0]);
+  }, [sendSysex]);
 
-    tr.appendChild(numTd);
-    tr.appendChild(noteTd);
-    tr.appendChild(velTd);
-    body.appendChild(tr);
-  }
-}
+  // Parse incoming SysEx and apply to state.
+  const handleMessage = React.useCallback((data) => {
+    if (data.length < 3 || data[0] !== 0xF0 || data[1] !== SYSEX_MFR) return;
+    const body = data.slice(1, data.length - 1);
+    if (body.length < 2) return;
+    const cmd = body[1];
 
-function refreshAll() {
-  document.getElementById("length").value = state.seqLength;
-  const pp = document.getElementById("playPause");
-  pp.textContent = state.playing ? "Pause" : "Play";
-  pp.classList.toggle("paused", !state.playing);
-
-  const rows = document.querySelectorAll("tr.step");
-  for (let i = 0; i < 8; i++) {
-    const row = rows[i];
-    const noteSel = row.querySelector("select");
-    const velRange = row.querySelector("input[type=range]");
-    const velNum = row.querySelector(".vel-num");
-    noteSel.value = state.pitch[i];
-    velRange.value = state.velocity[i];
-    velNum.textContent = state.velocity[i];
-  }
-  refreshActiveRows();
-}
-
-function refreshActiveRows() {
-  const rows = document.querySelectorAll("tr.step");
-  rows.forEach((row, i) => {
-    row.classList.toggle("dim", i >= state.seqLength);
-    row.classList.toggle("now", state.playing && i === state.currentStep);
-  });
-}
-
-// ── MIDI send helpers ───────────────────────────────────────────────
-function sendSysex(payload) {
-  if (!midiOut) return;
-  const msg = [0xF0, SYSEX_MFR, ...payload, 0xF7];
-  midiOut.send(msg);
-}
-function sendSetPitch(step, pitch)     { sendSysex([SYSEX_SET_PITCH, step & 7, pitch & 0x7F]); }
-function sendSetVelocity(step, vel)    { sendSysex([SYSEX_SET_VELOCITY, step & 7, (vel >> 4) & 0x0F, vel & 0x0F]); }
-function sendSetLength(len)            { sendSysex([SYSEX_SET_LENGTH, len & 0x0F]); }
-function sendSetPlaying(p)             { sendSysex([SYSEX_SET_PLAYING, p ? 1 : 0]); }
-function sendRequestDump()             { sendSysex([SYSEX_REQUEST_DUMP]); }
-
-// ── MIDI receive ────────────────────────────────────────────────────
-function onMidiMessage(ev) {
-  const data = ev.data;
-  if (data.length < 3 || data[0] !== 0xF0 || data[1] !== SYSEX_MFR) return;
-  // body = data[1..len-2] (skip F0 and F7)
-  const body = data.slice(1, data.length - 1);
-  if (body.length < 2) return;
-  const cmd = body[1];
-
-  switch (cmd) {
-    case SYSEX_FULL_DUMP: {
-      // body[2..]: seqLength, playing, currentStep, pitch[0..7], v_hi[0]/v_lo[0]...
+    if (cmd === SYSEX_FULL_DUMP) {
       if (body.length < 2 + 1 + 1 + 1 + 8 + 16) return;
       let p = 2;
-      state.seqLength    = body[p++];
-      state.playing      = body[p++];
-      state.currentStep  = body[p++];
-      for (let i = 0; i < 8; i++) state.pitch[i] = body[p++];
-      for (let i = 0; i < 8; i++) {
+      const newLen   = body[p++];
+      const newPlay  = body[p++];
+      const newStep  = body[p++];
+      const newPitch = Array.from({ length: 8 }, () => body[p++]);
+      const newVel   = Array.from({ length: 8 }, () => {
         const hi = body[p++], lo = body[p++];
-        state.velocity[i] = ((hi & 0x0F) << 4) | (lo & 0x0F);
-      }
-      refreshAll();
-      break;
-    }
-    case SYSEX_TICK: {
+        return ((hi & 0x0F) << 4) | (lo & 0x0F);
+      });
+      setSeqLen(newLen);
+      setPlayingS(!!newPlay);
+      setStep(newStep);
+      setPitch(newPitch);
+      setVel(newVel);
+    } else if (cmd === SYSEX_TICK) {
       if (body.length < 3) return;
-      state.currentStep = body[2];
-      refreshActiveRows();
-      break;
-    }
-    case SYSEX_PARAM_UPDATE: {
+      setStep(body[2]);
+    } else if (cmd === SYSEX_PARAM_UPDATE) {
       if (body.length < 3) return;
       const sub = body[2];
-      switch (sub) {
-        case SYSEX_SET_PITCH:
-          if (body.length < 5) return;
-          state.pitch[body[3] & 7] = body[4] & 0x7F;
-          break;
-        case SYSEX_SET_VELOCITY:
-          if (body.length < 6) return;
-          state.velocity[body[3] & 7] = ((body[4] & 0x0F) << 4) | (body[5] & 0x0F);
-          break;
-        case SYSEX_SET_LENGTH:
-          if (body.length < 4) return;
-          state.seqLength = body[3];
-          break;
-        case SYSEX_SET_PLAYING:
-          if (body.length < 4) return;
-          state.playing = body[3] ? 1 : 0;
-          break;
+      if (sub === SYSEX_SET_PITCH && body.length >= 5) {
+        const i = body[3] & 7, v = body[4] & 0x7F;
+        setPitch(p => { const n = p.slice(); n[i] = v; return n; });
+      } else if (sub === SYSEX_SET_VELOCITY && body.length >= 6) {
+        const i = body[3] & 7;
+        const v = ((body[4] & 0x0F) << 4) | (body[5] & 0x0F);
+        setVel(p => { const n = p.slice(); n[i] = v; return n; });
+      } else if (sub === SYSEX_SET_LENGTH && body.length >= 4) {
+        setSeqLen(body[3]);
+      } else if (sub === SYSEX_SET_PLAYING && body.length >= 4) {
+        setPlayingS(!!body[3]);
       }
-      refreshAll();
-      break;
     }
-  }
+  }, []);
+
+  // WebMIDI lifecycle.
+  React.useEffect(() => {
+    if (!navigator.requestMIDIAccess) {
+      setConn({ tone: 'disconnect', label: 'WebMIDI not supported' });
+      return;
+    }
+    let access;
+    let inputPort = null;
+    const findPort = (map) => {
+      for (const port of map.values()) {
+        if (port.name && port.name.indexOf(PRODUCT_NAME) !== -1) return port;
+      }
+      return null;
+    };
+    const wireUp = () => {
+      const inP  = findPort(access.inputs);
+      const outP = findPort(access.outputs);
+      if (inputPort && inputPort !== inP) inputPort.onmidimessage = null;
+      inputPort = inP;
+      midiOut.current = outP;
+      if (inP && outP) {
+        inP.onmidimessage = (ev) => handleMessage(ev.data);
+        setConn({ tone: 'connected', label: `Connected · ${outP.name}` });
+        // Ask the firmware for a fresh full state dump.
+        try { outP.send([0xF0, SYSEX_MFR, SYSEX_REQUEST_DUMP, 0xF7]); } catch {}
+      } else {
+        setConn({ tone: 'searching', label: 'Searching for DrumDrum…' });
+      }
+    };
+    setConn({ tone: 'searching', label: 'Requesting MIDI access…' });
+    navigator.requestMIDIAccess({ sysex: true })
+      .then((a) => { access = a; access.onstatechange = wireUp; wireUp(); })
+      .catch((err) => setConn({ tone: 'disconnect', label: `MIDI denied: ${err.message}` }));
+    return () => { if (inputPort) inputPort.onmidimessage = null; };
+  }, [handleMessage]);
+
+  return {
+    pitch, velocity, seqLength, playing, step, conn,
+    setStepPitch, setStepVel, setLen, setPlaying,
+  };
 }
 
-// ── Connection lifecycle ────────────────────────────────────────────
-function setStatus(kind, text) {
-  const s = document.getElementById("status");
-  s.classList.remove("connecting", "connected");
-  if (kind) s.classList.add(kind);
-  document.getElementById("statusText").textContent = text;
+// ─── Theme ───────────────────────────────────────────────────────────
+function theme(dark) {
+  return dark ? {
+    bg:'#0d1117', paper:'#151b24', panel:'#1c2230',
+    ink:'#f0f3f8', inkSoft:'#c8cdd6', mute:'#8a93a3', muteSoft:'#5a6273',
+    line:'#2a313e', lineSoft:'#1f2530',
+    bar:'#e6ebf2',
+    accent:'#ff7a52', accentDk:'#ff5a36', accentBg:'#3a1d12',
+    now:'#ffb066',
+    okBg:'#0e2a1c', okBd:'#1a4a32', ok:'#5fcf8a',
+    warnBg:'#2e2410', warnBd:'#5a4520', warn:'#f5c451',
+    badBg:'#2e1218', badBd:'#5a1f2c', bad:'#ef4d6a',
+    pianoWhite:'#e8ecf2', pianoBlack:'#0a0d12',
+    btnInk:'#f0f3f8', primary:'#ff7a52', primaryFg:'#1a0d08',
+  } : {
+    bg:'#f3f1ea', paper:'#ffffff', panel:'#fbfaf6',
+    ink:'#0d1015', inkSoft:'#3a3f4a', mute:'#7a818d', muteSoft:'#a3a8b1',
+    line:'#e6e3da', lineSoft:'#efece4',
+    bar:'#0d1015',
+    accent:'#ff5a36', accentDk:'#d63f1d', accentBg:'#ffe9e2',
+    now:'#ff8a3c',
+    okBg:'#e8f7ee', okBd:'#c7ebd5', ok:'#1e9d60',
+    warnBg:'#fff4d6', warnBd:'#f1d98a', warn:'#a87404',
+    badBg:'#fde7eb', badBd:'#f3bcc6', bad:'#b41f37',
+    pianoWhite:'#ffffff', pianoBlack:'#0d1015',
+    btnInk:'#ffffff', primary:'#0d1015', primaryFg:'#ffffff',
+  };
 }
 
-function findPort(map) {
-  for (const port of map.values()) {
-    if (port.name && port.name.indexOf(PRODUCT_NAME) !== -1) return port;
-  }
-  return null;
+// ─── App shell ───────────────────────────────────────────────────────
+function App({ dark, setDark }) {
+  const p = usePattern();
+  const [sel, setSel] = React.useState(0);
+  const c = theme(dark);
+
+  React.useEffect(() => { document.body.style.background = c.bg; }, [dark]);
+
+  // Clamp selection if length shrinks below it.
+  React.useEffect(() => {
+    if (sel >= p.seqLength) setSel(0);
+  }, [p.seqLength, sel]);
+
+  // Keyboard shortcuts. Shift modifier targets velocity instead of pitch.
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      const code = e.code, key = e.key;
+      if (code === 'Space') { e.preventDefault(); p.setPlaying(!p.playing); return; }
+      if (key >= '2' && key <= '8') { p.setLen(parseInt(key, 10)); return; }
+      if (code === 'ArrowLeft')  { setSel(s => (s + p.seqLength - 1) % p.seqLength); return; }
+      if (code === 'ArrowRight') { setSel(s => (s + 1) % p.seqLength); return; }
+      if (code === 'ArrowUp') {
+        e.preventDefault();
+        if (e.shiftKey) p.setStepVel(sel, p.velocity[sel] + 1);
+        else            p.setStepPitch(sel, p.pitch[sel] + 1);
+        return;
+      }
+      if (code === 'ArrowDown') {
+        e.preventDefault();
+        if (e.shiftKey) p.setStepVel(sel, p.velocity[sel] - 1);
+        else            p.setStepPitch(sel, p.pitch[sel] - 1);
+        return;
+      }
+      if (key === 'J' || key === 'j') {
+        if (e.shiftKey) p.setStepVel(sel, p.velocity[sel] - 16);
+        else            p.setStepPitch(sel, p.pitch[sel] - 12);
+        return;
+      }
+      if (key === 'K' || key === 'k') {
+        if (e.shiftKey) p.setStepVel(sel, p.velocity[sel] + 16);
+        else            p.setStepPitch(sel, p.pitch[sel] + 12);
+        return;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [p, sel]);
+
+  return (
+    <div style={{
+      backgroundColor: c.paper, borderRadius: 18, padding: 32,
+      boxShadow: dark
+        ? '0 1px 0 rgba(255,255,255,0.03), 0 30px 60px rgba(0,0,0,0.5)'
+        : '0 1px 0 rgba(0,0,0,0.04), 0 30px 60px rgba(20,15,10,0.06)',
+      border: `1px solid ${c.line}`,
+      color: c.ink, display: 'flex', flexDirection: 'column', gap: 22,
+    }}>
+      <Header p={p} c={c} dark={dark} setDark={setDark} />
+      <LengthRibbon p={p} c={c} />
+      <Chart p={p} c={c} sel={sel} setSel={setSel} />
+      <StepDetail p={p} c={c} sel={sel} setSel={setSel} />
+      <Footer c={c} />
+    </div>
+  );
 }
 
-async function connect(midiAccess) {
-  const inP  = findPort(midiAccess.inputs);
-  const outP = findPort(midiAccess.outputs);
-
-  if (midiIn  && midiIn  !== inP)  midiIn.onmidimessage = null;
-  midiIn  = inP;
-  midiOut = outP;
-
-  if (midiIn && midiOut) {
-    midiIn.onmidimessage = onMidiMessage;
-    setStatus("connected", "Connected · " + midiOut.name);
-    sendRequestDump();
-  } else {
-    setStatus("connecting", "Searching for DrumDrum…");
-  }
+// ─── Header ──────────────────────────────────────────────────────────
+function Header({ p, c, dark, setDark }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+      <div>
+        <div style={{ fontSize: 11, color: c.mute, letterSpacing: '0.22em',
+          textTransform: 'uppercase', fontWeight: 600 }}>
+          Workshop Computer · DFAM-style sequencer
+        </div>
+        <div style={{ fontSize: 44, fontWeight: 700, letterSpacing: '-0.03em',
+          marginTop: 4, lineHeight: 1, fontFamily: '"Space Grotesk", sans-serif',
+          color: c.ink,
+        }}>
+          drumdrum<span style={{ color: c.accent }}>.</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <Status c={c} conn={p.conn} />
+        <ThemeToggle dark={dark} setDark={setDark} c={c} />
+        <Transport p={p} c={c} />
+      </div>
+    </div>
+  );
 }
 
-async function start() {
-  if (!navigator.requestMIDIAccess) {
-    setStatus(null, "WebMIDI not supported in this browser");
-    return;
-  }
-  setStatus("connecting", "Requesting MIDI access…");
-  try {
-    const access = await navigator.requestMIDIAccess({ sysex: true });
-    access.onstatechange = () => connect(access);
-    await connect(access);
-  } catch (err) {
-    setStatus(null, "MIDI access denied: " + err.message);
-  }
+function Status({ c, conn }) {
+  const tones = {
+    connected:  { bg: c.okBg,   bd: c.okBd,   fg: c.ok   },
+    searching:  { bg: c.warnBg, bd: c.warnBd, fg: c.warn },
+    disconnect: { bg: c.badBg,  bd: c.badBd,  fg: c.bad  },
+  };
+  const t = tones[conn.tone] || tones.searching;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+      fontSize: 12, color: t.fg, fontWeight: 600,
+      fontFamily: '"JetBrains Mono", monospace',
+      padding: '7px 12px', backgroundColor: t.bg, borderRadius: 99,
+      border: `1px solid ${t.bd}`,
+    }}>
+      <span style={{
+        width: 8, height: 8, borderRadius: 99, backgroundColor: t.fg,
+        boxShadow: `0 0 8px ${t.fg}`,
+        animation: conn.tone === 'searching' ? 'pulse 1.4s ease-in-out infinite' : 'none',
+      }} />
+      {conn.label}
+    </div>
+  );
 }
 
-document.getElementById("playPause").addEventListener("click", () => {
-  state.playing = state.playing ? 0 : 1;
-  sendSetPlaying(state.playing);
-  refreshAll();
-});
+function ThemeToggle({ dark, setDark, c }) {
+  return (
+    <button onClick={() => setDark(!dark)} title={dark ? 'Switch to light' : 'Switch to dark'} style={{
+      width: 38, height: 38, border: `1px solid ${c.line}`, backgroundColor: c.panel,
+      borderRadius: 99, cursor: 'pointer', color: c.ink,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+    }}>
+      {dark ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
-buildLengthOptions();
-buildStepRows();
-refreshAll();
-start();
+function Transport({ p, c }) {
+  return (
+    <button onClick={() => p.setPlaying(!p.playing)} style={{
+      fontFamily: '"Space Grotesk", sans-serif', fontSize: 14, fontWeight: 700,
+      letterSpacing: '0.08em', textTransform: 'uppercase',
+      padding: '14px 28px', border: 'none', borderRadius: 10, cursor: 'pointer',
+      backgroundColor: c.primary, color: c.primaryFg,
+      display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 130,
+      boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+    }}>
+      {p.playing ? (
+        <>
+          <span style={{ display: 'inline-flex', gap: 3 }}>
+            <span style={{ width: 4, height: 14, backgroundColor: c.primaryFg }} />
+            <span style={{ width: 4, height: 14, backgroundColor: c.primaryFg }} />
+          </span>
+          Pause
+        </>
+      ) : (
+        <>
+          <span style={{ width: 0, height: 0, borderLeft: `12px solid ${c.primaryFg}`,
+            borderTop: '8px solid transparent', borderBottom: '8px solid transparent' }} />
+          Play
+        </>
+      )}
+    </button>
+  );
+}
+
+// ─── Length ribbon ───────────────────────────────────────────────────
+function LengthRibbon({ p, c }) {
+  const ribRef = React.useRef(null);
+  const dragging = React.useRef(false);
+  const setLenFromX = (x) => {
+    const r = ribRef.current.getBoundingClientRect();
+    const t = clamp((x - r.left) / r.width, 0, 1);
+    const n = clamp(Math.round(t * 8 + 0.0001), 2, 8);
+    p.setLen(n);
+  };
+  const onDown = (e) => {
+    dragging.current = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setLenFromX(e.clientX);
+  };
+  const onMove = (e) => { if (dragging.current) setLenFromX(e.clientX); };
+  const onUp = (e) => {
+    dragging.current = false;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  };
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between',
+        alignItems: 'baseline', marginBottom: 10 }}>
+        <Label c={c}>Length</Label>
+        <span style={{ fontSize: 12, color: c.mute,
+          fontFamily: '"JetBrains Mono", monospace' }}>
+          drag the orange handle · or click a number
+        </span>
+      </div>
+      <div ref={ribRef} onPointerDown={onDown} onPointerMove={onMove}
+        onPointerUp={onUp} onPointerCancel={onUp}
+        style={{
+          position: 'relative',
+          display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4,
+          padding: 4, backgroundColor: c.lineSoft, borderRadius: 10,
+          touchAction: 'none', userSelect: 'none',
+        }}>
+        {Array.from({ length: 8 }).map((_, i) => {
+          const inLen = i < p.seqLength;
+          return (
+            <button key={i}
+              onClick={(e) => { e.stopPropagation(); p.setLen(Math.max(2, i + 1)); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              style={{
+                position: 'relative', height: 44, border: 'none',
+                backgroundColor: inLen ? c.paper : 'transparent',
+                backgroundImage: inLen ? 'none' :
+                  'repeating-linear-gradient(45deg, rgba(127,127,127,0.18) 0 4px, transparent 4px 9px)',
+                color: inLen ? c.ink : c.muteSoft,
+                fontFamily: '"JetBrains Mono", monospace', fontSize: 14, fontWeight: 600,
+                borderRadius: 7, cursor: 'pointer',
+                boxShadow: inLen ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+              }}>
+              {i + 1}
+            </button>
+          );
+        })}
+        <div style={{
+          position: 'absolute', top: -4, bottom: -4,
+          left: `calc(${(p.seqLength / 8) * 100}% - 9px)`,
+          width: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none', transition: 'left 0.18s',
+        }}>
+          <div style={{
+            width: 6, height: '100%', backgroundColor: c.accent, borderRadius: 3,
+            boxShadow: `0 0 0 3px ${c.paper}, 0 2px 8px ${c.accent}55`,
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bar chart ───────────────────────────────────────────────────────
+function Chart({ p, c, sel, setSel }) {
+  return (
+    <div style={{
+      backgroundColor: c.paper, border: `1px solid ${c.line}`, borderRadius: 14,
+      padding: '20px 22px 12px', position: 'relative',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between',
+        alignItems: 'baseline', marginBottom: 14 }}>
+        <Label c={c}>Pattern</Label>
+        <Legend c={c} />
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'stretch',
+        height: 280, position: 'relative' }}>
+        <div style={{ display: 'flex', flexDirection: 'column',
+          justifyContent: 'space-between', fontSize: 9, color: c.mute,
+          paddingRight: 4, fontFamily: '"JetBrains Mono", monospace',
+          textAlign: 'right', minWidth: 24,
+        }}>
+          <span>127</span><span>96</span><span>64</span><span>32</span><span>0</span>
+        </div>
+        <div style={{ flex: 1, display: 'flex', gap: 10,
+          alignItems: 'stretch', position: 'relative', paddingTop: 14,
+        }}>
+          {[0.25, 0.5, 0.75].map(t => (
+            <div key={t} style={{
+              position: 'absolute', left: 0, right: 0, top: `calc(${t * 100}% + 7px)`,
+              borderTop: `1px dashed ${c.lineSoft}`, pointerEvents: 'none',
+            }} />
+          ))}
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Bar key={i} idx={i} p={p} c={c} sel={sel} setSel={setSel} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Legend({ c }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14,
+      fontSize: 11, color: c.mute, fontFamily: '"JetBrains Mono", monospace' }}>
+      <Swatch c={c} color={c.bar} alpha={0.4} /> low vel
+      <Swatch c={c} color={c.bar} alpha={1} /> high vel
+      <Swatch c={c} color={c.accent} alpha={1} /> selected
+      <Swatch c={c} color={c.now} alpha={1} ring /> playing
+    </div>
+  );
+}
+
+function Swatch({ c, color, alpha = 1, ring = false }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: 10, height: 10, backgroundColor: color,
+      opacity: alpha, borderRadius: 2, marginRight: -4,
+      boxShadow: ring ? `0 0 0 2px ${c.paper}, 0 0 0 3px ${color}` : 'none',
+    }} />
+  );
+}
+
+function Bar({ idx, p, c, sel, setSel }) {
+  const inLen = idx < p.seqLength;
+  const isSel = sel === idx;
+  const isNow = p.playing && idx === p.step;
+  const pitch = p.pitch[idx];
+  const vel = p.velocity[idx];
+  const h = (pitch / 127) * 100;
+  const opacity = inLen ? 0.35 + (vel / 255) * 0.65 : 0.18;
+  const color = isNow ? c.now : (isSel ? c.accent : c.bar);
+
+  return (
+    <button onClick={() => setSel(idx)} style={{
+      flex: 1, position: 'relative', cursor: 'pointer',
+      backgroundColor: 'transparent', border: 'none', padding: 0,
+      display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+      borderRadius: 8, minWidth: 0,
+    }}>
+      <div style={{
+        position: 'absolute', top: -10, left: 0, right: 0,
+        display: 'flex', justifyContent: 'center',
+        opacity: isSel ? 1 : 0,
+        fontSize: 10, fontFamily: '"JetBrains Mono", monospace',
+        color: c.accent, fontWeight: 600, transition: 'opacity 0.12s',
+      }}>{noteName(pitch)} · {vel}</div>
+
+      <div style={{
+        height: `${h}%`, backgroundColor: color, opacity,
+        borderRadius: '6px 6px 0 0',
+        transition: 'height 0.18s, opacity 0.18s',
+        position: 'relative',
+      }}>
+        {isNow && (
+          <div style={{
+            position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)',
+            width: 8, height: 8, borderRadius: 99, backgroundColor: c.now,
+            boxShadow: `0 0 12px ${c.now}, 0 0 0 2px ${c.paper}`,
+          }} />
+        )}
+      </div>
+      <div style={{
+        marginTop: 8, paddingTop: 10,
+        borderTop: `2px solid ${isSel ? c.accent : (inLen ? c.ink : c.line)}`,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        opacity: inLen ? 1 : 0.4,
+      }}>
+        <span style={{ fontSize: 18, fontWeight: 700,
+          color: isSel ? c.accent : c.ink,
+          fontFamily: '"Space Grotesk", sans-serif',
+        }}>
+          {String(idx + 1).padStart(2, '0')}
+        </span>
+        <span style={{ fontSize: 10, color: c.mute,
+          fontFamily: '"JetBrains Mono", monospace' }}>
+          {noteName(pitch)}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+// ─── Step detail ─────────────────────────────────────────────────────
+function StepDetail({ p, c, sel, setSel }) {
+  const pitch = p.pitch[sel];
+  const vel = p.velocity[sel];
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '180px 1fr 1fr', gap: 22,
+      backgroundColor: c.paper, border: `1px solid ${c.line}`, borderRadius: 14,
+      padding: 22,
+    }}>
+      <div>
+        <Label c={c}>Editing</Label>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+          <span style={{ fontSize: 11, color: c.mute,
+            fontFamily: '"JetBrains Mono", monospace' }}>step</span>
+          <span style={{ fontSize: 56, lineHeight: 1, fontWeight: 700,
+            color: c.accent, fontFamily: '"Space Grotesk", sans-serif',
+            letterSpacing: '-0.04em',
+          }}>{String(sel + 1).padStart(2, '0')}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+          <NavBtn c={c} onClick={() => setSel((sel + p.seqLength - 1) % p.seqLength)}>←</NavBtn>
+          <NavBtn c={c} onClick={() => setSel((sel + 1) % p.seqLength)}>→</NavBtn>
+          <span style={{ fontSize: 10, color: c.mute, alignSelf: 'center',
+            marginLeft: 4, fontFamily: '"JetBrains Mono", monospace' }}>←/→</span>
+        </div>
+      </div>
+      <PitchEditor c={c} pitch={pitch} onChange={(v) => p.setStepPitch(sel, v)} />
+      <VelocityEditor c={c} vel={vel} onChange={(v) => p.setStepVel(sel, v)} />
+    </div>
+  );
+}
+
+function NavBtn({ c, children, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      width: 36, height: 32, border: `1px solid ${c.line}`, backgroundColor: c.paper,
+      borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+      color: c.ink, fontFamily: '"JetBrains Mono", monospace',
+    }}>{children}</button>
+  );
+}
+
+function PitchEditor({ c, pitch, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Label c={c}>Pitch</Label>
+        <span style={{ fontSize: 16, fontWeight: 700,
+          fontFamily: '"JetBrains Mono", monospace', color: c.ink }}>
+          {noteName(pitch)} <span style={{ color: c.mute, fontWeight: 400 }}>· {pitch}</span>
+        </span>
+      </div>
+      <PianoStrip c={c} value={pitch} onChange={onChange} />
+      <BigSlider c={c} min={0} max={127} value={pitch} onChange={onChange} />
+    </div>
+  );
+}
+
+function PianoStrip({ c, value, onChange }) {
+  const center = clamp(value, 18, 108);
+  const startOct = Math.floor(center / 12) - 1;
+  const startNote = startOct * 12;
+  const notes = Array.from({ length: 36 }, (_, i) => startNote + i);
+  return (
+    <div style={{
+      position: 'relative', height: 56, backgroundColor: c.lineSoft,
+      border: `1px solid ${c.line}`, borderRadius: 8, overflow: 'hidden',
+      display: 'flex',
+    }}>
+      {notes.map((n) => {
+        const pc = ((n % 12) + 12) % 12;
+        const isBlack = [1,3,6,8,10].includes(pc);
+        const isC = pc === 0;
+        const isOn = n === value;
+        const inRange = n >= 0 && n <= 127;
+        return (
+          <button key={n}
+            disabled={!inRange}
+            onClick={() => inRange && onChange(n)}
+            style={{
+              flex: 1, padding: 0, border: 'none', cursor: inRange ? 'pointer' : 'default',
+              backgroundColor: isOn ? c.accent : (isBlack ? c.pianoBlack : c.pianoWhite),
+              borderRight: `1px solid ${isBlack ? '#000' : c.line}`,
+              opacity: inRange ? 1 : 0.3,
+              position: 'relative',
+            }}>
+            {isC && (
+              <span style={{
+                position: 'absolute', bottom: 4, left: 0, right: 0,
+                fontSize: 8,
+                color: isOn ? c.primaryFg : (isBlack ? c.pianoWhite : c.mute),
+                fontFamily: '"JetBrains Mono", monospace', textAlign: 'center',
+              }}>{noteName(n)}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function VelocityEditor({ c, vel, onChange }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Label c={c}>Velocity</Label>
+        <span style={{ fontSize: 16, fontWeight: 700,
+          fontFamily: '"JetBrains Mono", monospace', color: c.ink }}>
+          {vel} <span style={{ color: c.mute, fontWeight: 400 }}>/ 255</span>
+        </span>
+      </div>
+      <div style={{
+        position: 'relative', height: 56, backgroundColor: c.lineSoft,
+        border: `1px solid ${c.line}`, borderRadius: 8, overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `linear-gradient(90deg, ${c.accentBg}, ${c.accent})`,
+          opacity: 0.18,
+        }} />
+        <ScrubFill c={c} value={vel} max={255} onChange={onChange} />
+      </div>
+      <BigSlider c={c} min={0} max={255} value={vel} onChange={onChange} />
+    </div>
+  );
+}
+
+function ScrubFill({ c, value, max, onChange }) {
+  const ref = React.useRef(null);
+  const set = (e) => {
+    const r = ref.current.getBoundingClientRect();
+    const t = clamp((e.clientX - r.left) / r.width, 0, 1);
+    onChange(Math.round(t * max));
+  };
+  const onDown = (e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    set(e);
+    e.currentTarget.__move = set;
+  };
+  const t = value / max;
+  return (
+    <div ref={ref} onPointerDown={onDown}
+      onPointerMove={(e) => e.currentTarget.__move?.(e)}
+      style={{ position: 'absolute', inset: 0, cursor: 'pointer', touchAction: 'none' }}>
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0,
+        width: `${t * 100}%`,
+        backgroundImage: `linear-gradient(90deg, ${c.accent}aa, ${c.accent})`,
+      }} />
+      <div style={{
+        position: 'absolute', top: 0, bottom: 0, width: 3,
+        left: `calc(${t * 100}% - 1.5px)`, backgroundColor: c.ink,
+      }} />
+    </div>
+  );
+}
+
+function BigSlider({ c, min, max, value, onChange }) {
+  const ref = React.useRef(null);
+  const set = (e) => {
+    const r = ref.current.getBoundingClientRect();
+    const t = clamp((e.clientX - r.left) / r.width, 0, 1);
+    onChange(Math.round(min + t * (max - min)));
+  };
+  const onDown = (e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    set(e);
+    e.currentTarget.__move = set;
+  };
+  const t = (value - min) / (max - min);
+  return (
+    <div ref={ref} onPointerDown={onDown}
+      onPointerMove={(e) => e.currentTarget.__move?.(e)}
+      style={{
+        position: 'relative', height: 8, backgroundColor: c.lineSoft,
+        borderRadius: 4, cursor: 'pointer', touchAction: 'none',
+      }}>
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0,
+        width: `${t * 100}%`, backgroundColor: c.accent, borderRadius: 4,
+      }} />
+      <div style={{
+        position: 'absolute', top: -4, bottom: -4,
+        left: `calc(${t * 100}% - 7px)`, width: 14,
+        backgroundColor: c.ink, borderRadius: 3,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      }} />
+    </div>
+  );
+}
+
+// ─── Footer ──────────────────────────────────────────────────────────
+function Footer({ c }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between',
+      alignItems: 'center', fontSize: 11, color: c.mute,
+      fontFamily: '"JetBrains Mono", monospace', flexWrap: 'wrap', gap: 12,
+    }}>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+        <Kbd c={c} k="Space">play / pause</Kbd>
+        <Kbd c={c} k="2–8">length</Kbd>
+        <Kbd c={c} k="← →">step</Kbd>
+        <Kbd c={c} k="↑ ↓">pitch ±1</Kbd>
+        <Kbd c={c} k="J K">pitch ±octave</Kbd>
+        <Kbd c={c} k="⇧ ↑↓">velocity ±1</Kbd>
+        <Kbd c={c} k="⇧ J K">velocity ±16</Kbd>
+      </div>
+      <div>SysEx · 7D · MIDI thru WebMIDI</div>
+    </div>
+  );
+}
+
+function Kbd({ c, k, children }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        padding: '2px 7px', backgroundColor: c.paper, border: `1px solid ${c.line}`,
+        borderRadius: 4, color: c.ink, fontWeight: 600,
+        boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
+      }}>{k}</span>
+      {children}
+    </span>
+  );
+}
+
+function Label({ c, children }) {
+  return (
+    <span style={{
+      fontSize: 10, color: c.mute, letterSpacing: '0.18em',
+      textTransform: 'uppercase', fontWeight: 600,
+    }}>{children}</span>
+  );
+}
+
+function Root() {
+  const [dark, setDark] = React.useState(false);
+  // Re-key on theme swap so the tree remounts (no stale styles or
+  // half-completed transitions across the palette change).
+  return <App key={dark ? 'dark' : 'light'} dark={dark} setDark={setDark} />;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
 </script>
 </body>
 </html>
