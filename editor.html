@@ -697,20 +697,27 @@ function VelocityEditor({ c, vel, onChange }) {
 
 function ScrubFill({ c, value, max, onChange }) {
   const ref = React.useRef(null);
+  const dragging = React.useRef(false);
   const set = (e) => {
     const r = ref.current.getBoundingClientRect();
     const t = clamp((e.clientX - r.left) / r.width, 0, 1);
     onChange(Math.round(t * max));
   };
   const onDown = (e) => {
+    dragging.current = true;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     set(e);
-    e.currentTarget.__move = set;
+  };
+  const onMove = (e) => { if (dragging.current) set(e); };
+  const onUp = (e) => {
+    dragging.current = false;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
   };
   const t = value / max;
   return (
-    <div ref={ref} onPointerDown={onDown}
-      onPointerMove={(e) => e.currentTarget.__move?.(e)}
+    <div ref={ref}
+      onPointerDown={onDown} onPointerMove={onMove}
+      onPointerUp={onUp} onPointerCancel={onUp}
       style={{ position: 'absolute', inset: 0, cursor: 'pointer', touchAction: 'none' }}>
       <div style={{
         position: 'absolute', left: 0, top: 0, bottom: 0,
@@ -727,20 +734,27 @@ function ScrubFill({ c, value, max, onChange }) {
 
 function BigSlider({ c, min, max, value, onChange }) {
   const ref = React.useRef(null);
+  const dragging = React.useRef(false);
   const set = (e) => {
     const r = ref.current.getBoundingClientRect();
     const t = clamp((e.clientX - r.left) / r.width, 0, 1);
     onChange(Math.round(min + t * (max - min)));
   };
   const onDown = (e) => {
+    dragging.current = true;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     set(e);
-    e.currentTarget.__move = set;
+  };
+  const onMove = (e) => { if (dragging.current) set(e); };
+  const onUp = (e) => {
+    dragging.current = false;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
   };
   const t = (value - min) / (max - min);
   return (
-    <div ref={ref} onPointerDown={onDown}
-      onPointerMove={(e) => e.currentTarget.__move?.(e)}
+    <div ref={ref}
+      onPointerDown={onDown} onPointerMove={onMove}
+      onPointerUp={onUp} onPointerCancel={onUp}
       style={{
         position: 'relative', height: 8, backgroundColor: c.lineSoft,
         borderRadius: 4, cursor: 'pointer', touchAction: 'none',
