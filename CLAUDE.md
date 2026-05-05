@@ -45,7 +45,7 @@ Both cores read and write the same `SharedState` struct (`shared_state.h`) — a
 | `monome_mext.c/.h` | Monome serial protocol (vendored from MLRws) |
 | `grid_ui.cpp/.h` | drumdrum-specific Grid layout + key dispatch |
 | `midi_sysex.cpp/.h` | SysEx parser + outbound state push |
-| `editor.html` | Self-contained browser editor |
+| `editor.html` | Self-contained browser editor (React + Babel from CDN) |
 
 **Key constraints:**
 - All arithmetic in `ProcessSample` is `int32_t` — no float, no division. Multiply + shift only.
@@ -121,6 +121,10 @@ Manufacturer ID `0x7D`. All messages framed as `F0 7D <cmd> <payload> F7`.
 - `0x12` parameter update — mirror of `0x01..0x04` for panel-knob changes pushed to the browser
 
 `midi_device_task()` polls `tickEpoch` and a per-field "mirror" snapshot to detect changes from any source, so panel-knob edits propagate to the browser the same way Grid taps would.
+
+## Browser editor (`editor.html`)
+
+Single self-contained HTML file. React 18 + Babel are loaded from `unpkg.com` so the design (lifted from a Claude Design handoff) can run with minimal porting and the file stays openable from `file://`. Trade-off: needs internet on first open. State lives in a `usePattern()` hook that mirrors `SharedState` and fans setters out to outbound SysEx; inbound `FULL_DUMP`, `TICK`, and `PARAM_UPDATE` messages drive React state so the playhead and panel-knob edits both stay live. Slider/scrubber components use an explicit `dragging` ref pattern — never `__move` properties, which cause sticky-drag bugs.
 
 ## Key Design Decisions
 
