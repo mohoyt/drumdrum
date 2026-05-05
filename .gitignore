@@ -1,3 +1,8 @@
 build/
 .vscode/
+
+# Ignore stray UF2s from arbitrary build dirs but keep the canonical
+# release binary at the repo root tracked. CMake's POST_BUILD step
+# copies build/drumdrum.uf2 → ./drumdrum.uf2 on every build.
 *.uf2
+!/drumdrum.uf2
