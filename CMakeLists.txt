@@ -48,5 +48,14 @@ pico_set_binary_type(drumdrum copy_to_ram)
 
 pico_add_extra_outputs(drumdrum)
 
+# Copy the freshly-built UF2 up to the repo root so it tracks alongside
+# the source. The repo's .gitignore explicitly allows /drumdrum.uf2 so
+# this stays committed and downloadable from GitHub without a release.
+add_custom_command(TARGET drumdrum POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:drumdrum>/drumdrum.uf2"
+        "${CMAKE_CURRENT_LIST_DIR}/drumdrum.uf2"
+    COMMENT "Copying drumdrum.uf2 to repo root")
+
 # USB stdio OFF — interferes with normalisation probe
 pico_enable_stdio_usb(drumdrum 0)
