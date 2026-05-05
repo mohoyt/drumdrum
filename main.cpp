@@ -361,8 +361,11 @@ public:
             }
             lastSeenSeqLength = gState.seqLength;
 
-            // X knob → sequence length (2–8 steps)
-            int32_t knobLength = 2 + ((xRaw * 7) >> 12);
+            // X knob → sequence length (1–8 steps). Length 1 = a single
+            // hammered step (useful for one-shot voices); EOC fires on
+            // every tick in that case.
+            int32_t knobLength = 1 + ((xRaw * 8) >> 12);
+            if (knobLength > 8) knobLength = 8;
             if (!lengthPickedUp) {
                 int32_t moved = xRaw - lengthKnobAtReset;
                 if (moved < 0) moved = -moved;

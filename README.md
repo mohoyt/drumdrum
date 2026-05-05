@@ -18,7 +18,7 @@ The card decides between Grid and browser at boot from the USB-C cable orientati
 
 | Position | Main Knob | X Knob | Y Knob |
 |----------|-----------|--------|--------|
-| **Up** (play) | Tempo | Sequence length (2–8 steps) | VCO 2 pitch offset (±24 semitones) |
+| **Up** (play) | Tempo | Sequence length (1–8 steps) | VCO 2 pitch offset (±24 semitones) |
 | **Middle** (edit) | Tempo | Step pitch (0–127 MIDI note) | Step velocity (0–255) |
 | **Down** (momentary) | Short press: advance edit cursor. Long press (hold ≥500ms): toggle play/pause | | |
 
@@ -29,7 +29,7 @@ All knobs use pickup/catchup behaviour when switching modes — the knob must pa
 The sequencer runs, cycling through the active steps. LEDs show the current playback step.
 
 - **Main** controls the internal clock tempo (overridden when an external clock is patched to Pulse In 1).
-- **X** sets how many steps are active (2–8). The change takes effect immediately.
+- **X** sets how many steps are active (1–8). The change takes effect immediately. Length 1 hammers a single step (useful for one-shot voices) — the end-of-cycle trigger fires every tick in that case.
 - **Y** transposes VCO 2's pitch relative to VCO 1, in semitones. At noon the two VCOs play in unison; turn CW for higher, CCW for lower. Use this to set intervals (fifths, octaves) or detune for thickness.
 
 ### Edit Mode (switch MIDDLE)
@@ -130,7 +130,7 @@ Or just double-click the file. Chrome treats `file://` as a secure context, so W
 | Key | Action |
 |---|---|
 | `Space` | Play / pause |
-| `2`–`8` | Set sequence length |
+| `1`–`8` | Set sequence length |
 | `←` / `→` | Select previous / next step |
 | `↑` / `↓` | Pitch ± 1 semitone |
 | `J` / `K` | Pitch ± octave |

@@ -87,7 +87,7 @@ Do **not** probe-then-switch (initialize one stack, wait, tear down, init the ot
 
 ## Mode Behaviour (panel)
 
-- **Switch UP (play):** Main=tempo, X=sequence length (2–8), Y=VCO 2 pitch offset (±24 semitones). LEDs show playback step.
+- **Switch UP (play):** Main=tempo, X=sequence length (1–8), Y=VCO 2 pitch offset (±24 semitones). LEDs show playback step.
 - **Switch MIDDLE (edit):** Main=tempo, X=step pitch (full 0–127, pickup), Y=step velocity (0–255, pickup). LEDs show edit cursor. Playback continues independently.
 - **Switch DOWN (momentary):** Short press (<500 ms) advances edit cursor. Long press (≥500 ms) toggles play/pause. Preview trigger fires when cursor moves while paused.
 

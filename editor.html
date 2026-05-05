@@ -81,7 +81,7 @@ function usePattern() {
   }, [sendSysex]);
 
   const setLen = React.useCallback((n) => {
-    const c = clamp(n, 2, 8);
+    const c = clamp(n, 1, 8);
     setSeqLen(c);
     sendSysex([SYSEX_SET_LENGTH, c & 0x0F]);
   }, [sendSysex]);
@@ -225,7 +225,7 @@ function App({ dark, setDark }) {
       if (e.target.tagName === 'INPUT') return;
       const code = e.code, key = e.key;
       if (code === 'Space') { e.preventDefault(); p.setPlaying(!p.playing); return; }
-      if (key >= '2' && key <= '8') { p.setLen(parseInt(key, 10)); return; }
+      if (key >= '1' && key <= '8') { p.setLen(parseInt(key, 10)); return; }
       if (code === 'ArrowLeft')  { setSel(s => (s + p.seqLength - 1) % p.seqLength); return; }
       if (code === 'ArrowRight') { setSel(s => (s + 1) % p.seqLength); return; }
       if (code === 'ArrowUp') {
@@ -379,7 +379,7 @@ function LengthRibbon({ p, c }) {
   const setLenFromX = (x) => {
     const r = ribRef.current.getBoundingClientRect();
     const t = clamp((x - r.left) / r.width, 0, 1);
-    const n = clamp(Math.round(t * 8 + 0.0001), 2, 8);
+    const n = clamp(Math.round(t * 8 + 0.0001), 1, 8);
     p.setLen(n);
   };
   const onDown = (e) => {
@@ -414,7 +414,7 @@ function LengthRibbon({ p, c }) {
           const inLen = i < p.seqLength;
           return (
             <button key={i}
-              onClick={(e) => { e.stopPropagation(); p.setLen(Math.max(2, i + 1)); }}
+              onClick={(e) => { e.stopPropagation(); p.setLen(i + 1); }}
               style={{
                 position: 'relative', height: 44, border: 'none',
                 backgroundColor: inLen ? c.paper : 'transparent',
@@ -781,7 +781,7 @@ function Footer({ c }) {
     }}>
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
         <Kbd c={c} k="Space">play / pause</Kbd>
-        <Kbd c={c} k="2–8">length</Kbd>
+        <Kbd c={c} k="1–8">length</Kbd>
         <Kbd c={c} k="← →">step</Kbd>
         <Kbd c={c} k="↑ ↓">pitch ±1</Kbd>
         <Kbd c={c} k="J K">pitch ±octave</Kbd>
