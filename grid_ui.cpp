@@ -120,9 +120,8 @@ void grid_ui_process_input(void)
         if (x < 8) {
             // ── LEFT half ─────────────────────────────────
             if (y == 0) {
-                // length selector: tap col N → length N+1
+                // length selector: tap col N → length N+1 (1–8 inclusive)
                 uint8_t newLen = (uint8_t)(x + 1);
-                if (newLen < 2) newLen = 2;
                 gState.seqLength = newLen;
                 if (gState.editStep    >= newLen) gState.editStep    = 0;
                 if (gState.currentStep >= newLen) gState.currentStep = 0;

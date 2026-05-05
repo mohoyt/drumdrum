@@ -139,7 +139,7 @@ static void apply_sysex(const uint8_t *body, uint16_t len)
     case DRUMDRUM_SYSEX_SET_LENGTH:
         if (len >= 3) {
             uint8_t v = body[2];
-            if (v < 2) v = 2;
+            if (v < 1) v = 1;
             if (v > 8) v = 8;
             gState.seqLength = v;
         }
