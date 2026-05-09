@@ -19,6 +19,7 @@ static volatile bool s_connected     = false;
 static uint8_t       s_dev_addr      = 0;
 static uint8_t       s_ep_in         = 0;       // bulk-IN endpoint address (with direction bit)
 static uint16_t      s_ep_in_size    = 64;      // bulk-IN max packet size
+static uint8_t       s_last_itf      = TUSB_INDEX_INVALID_8; // highest interface we claimed
 
 // Per-button rising-edge state (CC value <64 → ≥64 = press).
 static uint8_t       s_btn22_prev    = 0;
@@ -94,6 +95,7 @@ static void clear_state(void) {
     s_dev_addr    = 0;
     s_ep_in       = 0;
     s_ep_in_size  = 64;
+    s_last_itf    = TUSB_INDEX_INVALID_8;
     s_btn22_prev  = 0;
     s_btn23_prev  = 0;
     s_btn24_prev  = 0;
@@ -150,20 +152,22 @@ static bool driver_open(uint8_t rhport, uint8_t dev_addr,
 
     // Walk forward to the MIDIStreaming interface. If we entered on
     // MIDIStreaming directly, the very first iteration matches.
-    bool found_ms = false;
+    // Stash its interface number so set_config can tell the host stack
+    // to resume past our claimed group — see driver_set_config below.
+    uint8_t ms_itf_num = TUSB_INDEX_INVALID_8;
     while (p_desc < p_end) {
         if (tu_desc_type(p_desc) == TUSB_DESC_INTERFACE) {
             tusb_desc_interface_t const* itf = (tusb_desc_interface_t const*)p_desc;
             if (itf->bInterfaceClass    == TUSB_CLASS_AUDIO &&
                 itf->bInterfaceSubClass == 3 /* MIDIStreaming */) {
-                found_ms = true;
+                ms_itf_num = itf->bInterfaceNumber;
                 p_desc = tu_desc_next(p_desc);
                 break;
             }
         }
         p_desc = tu_desc_next(p_desc);
     }
-    if (!found_ms) return false;
+    if (ms_itf_num == TUSB_INDEX_INVALID_8) return false;
 
     // Now scan for the bulk endpoints. Stop at the next interface.
     uint8_t  ep_in = 0, ep_out = 0;
@@ -193,6 +197,7 @@ static bool driver_open(uint8_t rhport, uint8_t dev_addr,
     s_dev_addr   = dev_addr;
     s_ep_in      = ep_in;
     s_ep_in_size = ep_in_size;
+    s_last_itf   = ms_itf_num;
     return true;
 }
 
@@ -200,10 +205,16 @@ static bool driver_set_config(uint8_t dev_addr, uint8_t itf_num) {
     (void)itf_num;
     s_connected = true;
     rearm_rx();
-    // Tell the host stack this driver is done configuring its interface.
-    // We claimed AudioControl + MIDIStreaming as one group — pass
-    // TUSB_INDEX_INVALID_8 so the stack moves to the next driver.
-    usbh_driver_set_config_complete(dev_addr, TUSB_INDEX_INVALID_8);
+    // Tell the host stack this driver has finished configuring. The
+    // stack's loop advances `itf_num++` and resumes searching for the
+    // next driver from there (usbh.c:1740). When our driver claimed
+    // both AudioControl + MIDIStreaming, both interface numbers map
+    // back to us in dev->itf2drv[], so we MUST return the highest
+    // claimed interface number — passing TUSB_INDEX_INVALID_8 (0xFF)
+    // would wrap to 0, find our driver again, and recurse until the
+    // stack overflows. The TinyUSB header note for IAD-binding drivers
+    // says exactly this: "should return itf_num + 1 when complete".
+    usbh_driver_set_config_complete(dev_addr, s_last_itf);
     return true;
 }
 
