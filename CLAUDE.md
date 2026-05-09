@@ -6,12 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **drumdrum** is a DFAM-style 8-step sequencer program card for the Music Thing Modular Workshop Computer. It runs on an RP2040 (Cortex M0+) using the ComputerCard header-only C++ library at a fixed 48 kHz sample rate.
 
-Three control surfaces share one sequencer state:
+Four control surfaces share one sequencer state:
 - **Panel** — three knobs, switch, and six LEDs on the card itself.
-- **Monome Grid** (16×8) over USB host on the front jack.
+- **Monome Grid** (16×8) over USB host (CDC + FTDI) on the front jack.
+- **Music Thing 8mu** over USB host (class-compliant MIDI) on the front jack.
 - **Browser WebMIDI editor** (`editor.html`) over USB device when the card is plugged into a computer.
 
-The Grid vs browser choice is made once at boot from the USB-C CC pins (`USBPowerState()`); a power cycle is required to switch.
+Host vs device is decided once at boot from the USB-C CC pins (`USBPowerState()`); a power cycle is required to switch. Within host mode, Grid vs 8mu is auto-detected from the device's USB class — CDC mount fires `tuh_cdc_*` callbacks (mext) and Audio/MIDIStreaming mount fires our in-tree class driver in `midi_host.cpp`.
 
 The `WORKSHOP_COMPUTER_AI_DIRECTIVE.md` file in this repo is the authoritative reference for platform constraints, API details, and coding standards. Read it before making changes.
 
@@ -29,9 +30,9 @@ Output: `build/drumdrum.uf2` — flash to Workshop Computer by holding BOOT and 
 
 ## Architecture
 
-`DFAMSequencer` subclasses `ComputerCard` and overrides `ProcessSample()`, which runs in an ISR on **Core 0** at 48 kHz and must complete within ~20 μs. **Core 1** owns the USB stack — either TinyUSB host (Grid) or device (WebMIDI), decided once at boot.
+`DFAMSequencer` subclasses `ComputerCard` and overrides `ProcessSample()`, which runs in an ISR on **Core 0** at 48 kHz and must complete within ~20 μs. **Core 1** owns the USB stack — either TinyUSB host (Grid via CDC, or 8mu via class-compliant MIDI) or device (WebMIDI), decided once at boot. Within host mode, the surface in use is auto-detected from the device's USB class.
 
-Both cores read and write the same `SharedState` struct (`shared_state.h`) — a flat plain-data global with single-byte and naturally aligned 32-bit fields. Cross-core access is atomic on the M0+; no locks or FIFOs needed for state itself. `tickEpoch` is the cross-core "something changed" signal: Core 0 increments it on every step advance and other interesting events; Core 1 polls it to drive Grid LED redraws and SysEx tick notifications.
+Both cores read and write the same `SharedState` struct (`shared_state.h`) — a flat plain-data global with single-byte and naturally aligned 32-bit fields. Cross-core access is atomic on the M0+; no locks or FIFOs needed for state itself. `tickEpoch` is the cross-core "something changed" signal: Core 0 increments it on every step advance and other interesting events; Core 1 polls it to drive Grid LED redraws and SysEx tick notifications. The 8mu has no outbound feedback channel, so it doesn't read `tickEpoch` — it only writes to `gState`.
 
 **Source files:**
 
@@ -39,11 +40,12 @@ Both cores read and write the same `SharedState` struct (`shared_state.h`) — a
 |---|---|
 | `main.cpp` | `DFAMSequencer` + audio ISR + USB-role selection |
 | `shared_state.h` | `SharedState` struct, `gState` extern |
-| `usb_core1.cpp/.h` | Core 1 entry — picks Grid loop or device loop |
-| `tusb_config.h` | TinyUSB config (dual-role, MIDI device + CDC/FTDI host) |
+| `usb_core1.cpp/.h` | Core 1 entry — picks host loop or device loop |
+| `tusb_config.h` | TinyUSB config (dual-role, MIDI device + CDC/FTDI host + MIDI host hint) |
 | `usb_descriptors.c` | USB MIDI device descriptor (VID 0x2E8A / PID 0x10C2, "DrumDrum") |
 | `monome_mext.c/.h` | Monome serial protocol (vendored from MLRws) |
 | `grid_ui.cpp/.h` | drumdrum-specific Grid layout + key dispatch |
+| `midi_host.cpp/.h` | In-tree class-compliant USB MIDI host driver for 8mu |
 | `midi_sysex.cpp/.h` | SysEx parser + outbound state push |
 | `editor.html` | Self-contained browser editor (React + Babel from CDN) |
 
@@ -61,14 +63,26 @@ Both cores read and write the same `SharedState` struct (`shared_state.h`) — a
 | Reading | Meaning | Mode |
 |---|---|---|
 | `UFP` | Plugged into a computer | Device — WebMIDI editor |
-| `DFP` | Powering a peripheral | Host — Monome Grid |
+| `DFP` | Powering a peripheral | Host — Grid or 8mu (auto) |
 | `Unsupported` | Older hardware | Host (default) |
 
 Init pattern matches MLRws (which is the reference known-working setup on this hardware):
 - **Device mode** — `board_init()` + `tud_init(0)` are called from Core 0 in `main()` before launching Core 1, so the host can enumerate immediately. Core 1 just runs `tud_task()` + `midi_device_task()`.
-- **Host mode** — Core 1 calls `board_init()` + `tusb_init()` (the dual-role-aware init) itself, then runs `mext_task()` + `grid_ui_*()`.
+- **Host mode** — Core 1 calls `board_init()` + `tusb_init()` (the dual-role-aware init) itself, then runs `mext_task()` (which pumps `tuh_task()` and dispatches CDC for Grid + the MIDI driver's xfer callbacks for 8mu) + `grid_ui_*()`.
 
 Do **not** probe-then-switch (initialize one stack, wait, tear down, init the other). The remote host sees a brief device that vanishes and gives up enumerating.
+
+### MIDI host driver (8mu)
+
+TinyUSB 0.18 (Pico SDK 2.2.0) ships only `class/midi/midi_device.c` — no MIDI host driver. `CFG_TUH_MIDI` exists as a config flag but only enables a one-block descriptor-parser hint in `usbh.c` that groups class-compliant USB MIDI's Audio-Control + MIDIStreaming interfaces into a single driver claim. We supply the actual driver ourselves in `midi_host.cpp`, registered through TinyUSB's `usbh_app_driver_get_cb()` weak hook.
+
+The driver:
+1. Implements `usbh_class_driver_t` (init / deinit / open / set_config / xfer_cb / close).
+2. In `open()`, walks descriptors past Audio-Control to find the MIDIStreaming interface, then scans for bulk endpoints and opens them via `tuh_edpt_open`.
+3. In `set_config()`, kicks off the first IN read with `usbh_edpt_xfer` and calls `usbh_driver_set_config_complete(dev_addr, TUSB_INDEX_INVALID_8)`.
+4. In `xfer_cb()`, parses 32-bit USB-MIDI Event Packets (CIN in low nibble of byte 0; bytes 1–3 are MIDI message), routes Control Change to `handle_cc`, re-arms the IN xfer.
+
+`handle_cc` writes directly to `gState` (single-byte atomic on M0+) and increments `tickEpoch` to nudge other surfaces.
 
 ## I/O Map
 
@@ -104,6 +118,22 @@ Do **not** probe-then-switch (initialize one stack, wait, tear down, init the ot
 
 The grid display refreshes when `SharedState` differs from a snapshot the renderer keeps locally — typically driven by `tickEpoch` increments and key events.
 
+## 8mu CC mapping
+
+The 8mu's factory faders send CC 34–41; everything else (buttons, accelerometer, alt-bank velocity faders, edit-cursor fader) is configured by the user in the 8mu web editor to match this table. CCs are channel-agnostic. Buttons act on the rising edge (`value` crossing ≥64 from <64).
+
+| CC      | Effect                                             |
+|---------|----------------------------------------------------|
+| 22      | (button) toggle pitch ↔ velocity edit mode         |
+| 23      | (button) toggle play/pause                         |
+| 24      | (button) reset to step 1 (writes `gState.currentStep = 0`) |
+| 28      | (fader) `gState.editStep = (value*8)>>7`, clamp 0–7 |
+| 34–41   | (faders, 8mu factory) step pitches 0–7, raw 7-bit; OR step velocities (`<<1`) when `gState.midiHostVelocityMode` is set |
+| 50–57   | (faders, alt bank) step velocities 0–7 (`<<1`), regardless of mode |
+| 25–27, 29–33, 42–49, all others | reserved or ignored |
+
+`gState.midiHostVelocityMode` (single `uint8_t`, written only by the MIDI host driver) toggles the meaning of CC 34–41. CC 50–57 always writes velocities, so an 8mu user can dedicate one bank to pitches and another to velocities and never need to press the toggle.
+
 ## SysEx protocol (browser editor)
 
 Manufacturer ID `0x7D`. All messages framed as `F0 7D <cmd> <payload> F7`.
@@ -136,3 +166,5 @@ Single self-contained HTML file. React 18 + Babel are loaded from `unpkg.com` so
 - **Boot mute:** Audio and pulse outputs are held at zero for the first 150 ms after power-on so settling DACs and immediate startup state can't make a click. Step 1's trigger fires (but EOC does not) the moment the mute lifts.
 - **Pitch bin mapping:** Grid pitch picker uses `cell = pitch * 40 / 128` for render and `pitch = (cell * 128 + 64) / 40` for tap (bin centre). Every MIDI pitch lands in exactly one cell.
 - **State sharing:** All cross-core writes are direct to `gState`. Single-byte stores are atomic on M0+; multi-byte fields use natural alignment + `volatile`. The only "FIFO" is the mext key-event ring buffer inside `monome_mext.c`.
+- **8mu mapping rationale:** Faders default to step pitches because 7-bit CC maps 1:1 to MIDI pitch range (no scaling, instantly legible). Velocities (0–255) are reachable via either a button-toggled mode on the same CC range OR a dedicated alt-bank CC range (50–57, `value<<1`); the latter exists so users can dedicate an 8mu bank to velocity without ever touching the toggle. Buttons act on rising edge (CC value crossing ≥64 from <64) so a release event doesn't double-fire. CCs are channel-agnostic — 8mu's per-bank channel setting doesn't matter to us.
+- **No 8mu pickup:** Unlike the panel knobs, 8mu faders write directly on every CC RX without pickup logic. 8mu only sends on change, so an unmoved fader never overwrites a parameter — the "jump on first move after mode toggle" behaviour is desirable here (you intentionally moved that fader; writing its value is what you want).
