@@ -292,7 +292,7 @@ Flash the resulting `drumdrum.uf2` to the Workshop Computer by holding BOOT whil
 
 - **Core 0** runs the sequencer and audio DSP in `ProcessSample()` at 48 kHz in interrupt context. Pure integer arithmetic, no float, no division.
 - **Core 1** owns the USB stack — TinyUSB host (Monome Grid via the vendored mext serial protocol, or 8mu via a small in-tree class-compliant USB MIDI host driver since TinyUSB 0.18 doesn't ship one) or device (USB MIDI for the browser editor), decided once at boot from the USB-C CC pins via `USBPowerState()`.
-- All three control surfaces share a single `SharedState` struct (`shared_state.h`); cross-core writes are atomic on the M0+, no locks needed. `tickEpoch` is the cross-core "something changed" signal.
+- All four control surfaces (panel, Grid, 8mu, browser editor) share a single `SharedState` struct (`shared_state.h`); cross-core writes are atomic on the M0+, no locks needed. `tickEpoch` is the cross-core "something changed" signal.
 - White noise via xorshift32 PRNG, seeded from the hardware timer on each boot.
 - CV Out 1 uses EEPROM-calibrated `CVOutMIDINote()` for accurate 1V/oct tracking.
 - Audio Out 2 approximates 1V/oct on the 12-bit audio DAC (~28.4 DAC units/semitone, uncalibrated).

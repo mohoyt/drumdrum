@@ -30,9 +30,9 @@ Output: `build/drumdrum.uf2` — flash to Workshop Computer by holding BOOT and 
 
 ## Architecture
 
-`DFAMSequencer` subclasses `ComputerCard` and overrides `ProcessSample()`, which runs in an ISR on **Core 0** at 48 kHz and must complete within ~20 μs. **Core 1** owns the USB stack — either TinyUSB host (Grid) or device (WebMIDI), decided once at boot.
+`DFAMSequencer` subclasses `ComputerCard` and overrides `ProcessSample()`, which runs in an ISR on **Core 0** at 48 kHz and must complete within ~20 μs. **Core 1** owns the USB stack — either TinyUSB host (Grid via CDC, or 8mu via class-compliant MIDI) or device (WebMIDI), decided once at boot. Within host mode, the surface in use is auto-detected from the device's USB class.
 
-Both cores read and write the same `SharedState` struct (`shared_state.h`) — a flat plain-data global with single-byte and naturally aligned 32-bit fields. Cross-core access is atomic on the M0+; no locks or FIFOs needed for state itself. `tickEpoch` is the cross-core "something changed" signal: Core 0 increments it on every step advance and other interesting events; Core 1 polls it to drive Grid LED redraws and SysEx tick notifications.
+Both cores read and write the same `SharedState` struct (`shared_state.h`) — a flat plain-data global with single-byte and naturally aligned 32-bit fields. Cross-core access is atomic on the M0+; no locks or FIFOs needed for state itself. `tickEpoch` is the cross-core "something changed" signal: Core 0 increments it on every step advance and other interesting events; Core 1 polls it to drive Grid LED redraws and SysEx tick notifications. The 8mu has no outbound feedback channel, so it doesn't read `tickEpoch` — it only writes to `gState`.
 
 **Source files:**
 
@@ -166,3 +166,5 @@ Single self-contained HTML file. React 18 + Babel are loaded from `unpkg.com` so
 - **Boot mute:** Audio and pulse outputs are held at zero for the first 150 ms after power-on so settling DACs and immediate startup state can't make a click. Step 1's trigger fires (but EOC does not) the moment the mute lifts.
 - **Pitch bin mapping:** Grid pitch picker uses `cell = pitch * 40 / 128` for render and `pitch = (cell * 128 + 64) / 40` for tap (bin centre). Every MIDI pitch lands in exactly one cell.
 - **State sharing:** All cross-core writes are direct to `gState`. Single-byte stores are atomic on M0+; multi-byte fields use natural alignment + `volatile`. The only "FIFO" is the mext key-event ring buffer inside `monome_mext.c`.
+- **8mu mapping rationale:** Faders default to step pitches because 7-bit CC maps 1:1 to MIDI pitch range (no scaling, instantly legible). Velocities (0–255) are reachable via either a button-toggled mode on the same CC range OR a dedicated alt-bank CC range (50–57, `value<<1`); the latter exists so users can dedicate an 8mu bank to velocity without ever touching the toggle. Buttons act on rising edge (CC value crossing ≥64 from <64) so a release event doesn't double-fire. CCs are channel-agnostic — 8mu's per-bank channel setting doesn't matter to us.
+- **No 8mu pickup:** Unlike the panel knobs, 8mu faders write directly on every CC RX without pickup logic. 8mu only sends on change, so an unmoved fader never overwrites a parameter — the "jump on first move after mode toggle" behaviour is desirable here (you intentionally moved that fader; writing its value is what you want).
