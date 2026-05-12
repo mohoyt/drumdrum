@@ -118,19 +118,34 @@ The driver:
 
 The grid display refreshes when `SharedState` differs from a snapshot the renderer keeps locally — typically driven by `tickEpoch` increments and key events.
 
-## 8mu CC mapping
+## 8mu MIDI mapping
 
-The 8mu's factory faders send CC 34–41; everything else (buttons, accelerometer, alt-bank velocity faders, edit-cursor fader) is configured by the user in the 8mu web editor to match this table. CCs are channel-agnostic. Buttons act on the rising edge (`value` crossing ≥64 from <64).
+The driver dispatches two CINs from `tuh_midi_rx_cb`: `MIDI_CIN_CONTROL_CHANGE` (0xB) and `MIDI_CIN_NOTE_ON` (0x9). All messages are channel-agnostic.
+
+**Factory 8mu defaults** — work plug-and-play, no 8mu config needed:
+
+| Source                | Message       | Effect                                             |
+|-----------------------|---------------|----------------------------------------------------|
+| Faders 1–8            | CC 34–41      | step pitches 0–7 raw 7-bit; OR step velocities (`<<1`) when `gState.midiHostVelocityMode` is set |
+| Button 1              | Note 36 (C2)  | `gState.midiHostVelocityMode ^= 1`                 |
+| Button 2              | Note 48 (C3)  | `gState.playing ^= 1`                              |
+| Button 3              | Note 60 (C4)  | `gState.currentStep = 0` (mirrors Pulse In 2 reset) |
+| Button 4              | Note 72 (C5)  | `randomize_pattern()` — re-rolls all 8 pitches + velocities using a Core-1-local xorshift seeded from `time_us_32()` |
+
+`note-on` with velocity 0 is treated as note-off (running-status convention) and ignored. Only press edges fire.
+
+**Optional CC alt-bank** — configured by the user in the 8mu web editor for non-default mappings:
 
 | CC      | Effect                                             |
 |---------|----------------------------------------------------|
-| 22      | (button) toggle pitch ↔ velocity edit mode         |
-| 23      | (button) toggle play/pause                         |
-| 24      | (button) reset to step 1 (writes `gState.currentStep = 0`) |
+| 22      | (button, edge) toggle pitch ↔ velocity edit mode   |
+| 23      | (button, edge) toggle play/pause                   |
+| 24      | (button, edge) reset to step 1                     |
 | 28      | (fader) `gState.editStep = (value*8)>>7`, clamp 0–7 |
-| 34–41   | (faders, 8mu factory) step pitches 0–7, raw 7-bit; OR step velocities (`<<1`) when `gState.midiHostVelocityMode` is set |
-| 50–57   | (faders, alt bank) step velocities 0–7 (`<<1`), regardless of mode |
-| 25–27, 29–33, 42–49, all others | reserved or ignored |
+| 50–57   | (faders) step velocities 0–7 (`<<1`), regardless of mode |
+| 25–27, 29–33, 42–49, all others | reserved or ignored             |
+
+CC button rising-edge state lives in three file-static `uint8_t`s in `midi_host.cpp` (one per CC 22/23/24); note buttons don't need edge state because each `note-on` event is itself a press. There's no CC equivalent of randomize today — could add CC 25 if useful later.
 
 `gState.midiHostVelocityMode` (single `uint8_t`, written only by the MIDI host driver) toggles the meaning of CC 34–41. CC 50–57 always writes velocities, so an 8mu user can dedicate one bank to pitches and another to velocities and never need to press the toggle.
 
@@ -166,5 +181,6 @@ Single self-contained HTML file. React 18 + Babel are loaded from `unpkg.com` so
 - **Boot mute:** Audio and pulse outputs are held at zero for the first 150 ms after power-on so settling DACs and immediate startup state can't make a click. Step 1's trigger fires (but EOC does not) the moment the mute lifts.
 - **Pitch bin mapping:** Grid pitch picker uses `cell = pitch * 40 / 128` for render and `pitch = (cell * 128 + 64) / 40` for tap (bin centre). Every MIDI pitch lands in exactly one cell.
 - **State sharing:** All cross-core writes are direct to `gState`. Single-byte stores are atomic on M0+; multi-byte fields use natural alignment + `volatile`. The only "FIFO" is the mext key-event ring buffer inside `monome_mext.c`.
-- **8mu mapping rationale:** Faders default to step pitches because 7-bit CC maps 1:1 to MIDI pitch range (no scaling, instantly legible). Velocities (0–255) are reachable via either a button-toggled mode on the same CC range OR a dedicated alt-bank CC range (50–57, `value<<1`); the latter exists so users can dedicate an 8mu bank to velocity without ever touching the toggle. Buttons act on rising edge (CC value crossing ≥64 from <64) so a release event doesn't double-fire. CCs are channel-agnostic — 8mu's per-bank channel setting doesn't matter to us.
+- **8mu mapping rationale:** Faders default to step pitches because 7-bit CC maps 1:1 to MIDI pitch range (no scaling, instantly legible). Velocities (0–255) are reachable via either a button-toggled mode on the same CC range OR a dedicated alt-bank CC range (50–57, `value<<1`); the latter exists so users can dedicate an 8mu bank to velocity without ever touching the toggle. The 8mu's factory buttons send notes 36/48/60/72 (one octave apart), so we listen for those directly and act on `note-on` press edges (velocity > 0). The parallel CC 22–24 alt-bank exists for non-8mu controllers and 8mu users who reconfigured buttons to CC — CC buttons act on rising edge (`value` crossing ≥64 from <64) so a release event doesn't double-fire. CCs and notes are both channel-agnostic — 8mu's per-bank channel setting doesn't matter to us.
+- **Randomize action (note 72 / C5):** Re-rolls all 8 step pitches and velocities by calling `randomize_pattern()` in `midi_host.cpp`, using the same pitch range (C2–B4) and velocity floor (100–255) as the constructor's boot randomisation. A dedicated Core-1 xorshift32 PRNG lives in `midi_host.cpp`, seeded lazily from `time_us_32()` on first use — separate from the audio ISR's PRNG on Core 0 so a button press doesn't perturb the white-noise stream. Single-byte writes are atomic, so a randomize-during-playback might briefly mix new and old values mid-pattern, which is the desired "instant scramble" sound.
 - **No 8mu pickup:** Unlike the panel knobs, 8mu faders write directly on every CC RX without pickup logic. 8mu only sends on change, so an unmoved fader never overwrites a parameter — the "jump on first move after mode toggle" behaviour is desirable here (you intentionally moved that fader; writing its value is what you want).
