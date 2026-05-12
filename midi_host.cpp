@@ -150,7 +150,15 @@ static void rearm_rx(void) {
     uint16_t const len = (s_ep_in_size > sizeof(s_rx_buf))
         ? (uint16_t)sizeof(s_rx_buf) : s_ep_in_size;
     if (!usbh_edpt_xfer(s_dev_addr, s_ep_in, s_rx_buf, len)) {
-        // claim is rolled back inside usbh_edpt_xfer on failure
+        // The internal usbh_edpt_xfer (class-driver-level) does NOT
+        // roll back the claim on failure — only the app-level
+        // tuh_edpt_xfer does. Without an explicit release here, a
+        // transient submit failure would leave the IN endpoint
+        // permanently claimed and every subsequent rearm_rx() would
+        // bail at the claim step above, silently stopping all MIDI
+        // input until the 8mu is unplugged. Caught by Codex review
+        // on PR #8.
+        usbh_edpt_release(s_dev_addr, s_ep_in);
     }
 }
 
